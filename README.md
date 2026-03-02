@@ -78,6 +78,7 @@ Cron schedule is in [vercel.json](/Users/kirk/Development/grape-governance-disco
 - If `stateInitializedBeforeRun=false` and `seededWithoutAlert>0`, that run only seeded state (expected when `ANNOUNCE_EXISTING_ON_START=false`), so no Discord create messages are sent on that first run.
 - When you add a new entry to `DAO_TARGETS`, existing proposals in that newly added DAO are seeded silently once (`newTargetsSeeded>0`) to avoid backfilling/spamming old proposals.
 - For a one-time delivery smoke test, set `TEST_POST_LATEST_PROPOSAL_ONCE=true` and run cron; check `testPostLatestPosted=1`, then set it back to `false`.
+- If `sendErrors>0`, Discord rejected one or more messages (e.g., wrong channel ID, missing bot permissions, or invalid token). Check adjacent error lines in Function Logs.
 
 ## Security
 

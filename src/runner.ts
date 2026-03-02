@@ -184,6 +184,7 @@ export type RunStats = {
   fetchErrors: number;
   newTargetsSeeded: number;
   testPostLatestPosted: number;
+  sendErrors: number;
 };
 
 export async function runCronOnce(config = getConfig()): Promise<RunStats> {
@@ -218,6 +219,7 @@ export async function runCronOnce(config = getConfig()): Promise<RunStats> {
   let fetchErrors = 0;
   let newTargetsSeeded = 0;
   let testPostLatestPosted = 0;
+  let sendErrors = 0;
 
   if (config.testPostLatestProposalOnce && !state.testPostLatestProposalDone) {
     let latest: { target: DaoTarget; proposal: ProposalRecord } | null = null;
@@ -230,19 +232,24 @@ export async function runCronOnce(config = getConfig()): Promise<RunStats> {
     }
 
     if (latest) {
-      const content = await buildLatestProposalTestMessage({
-        daoLabel: latest.target.label,
-        proposal: latest.proposal,
-        realmPubkey: latest.target.realmPubkey,
-        fetchDescriptionFromLink: config.fetchDescriptionFromLink
-      });
-      await sendDiscordMessage({
-        token: config.discordToken,
-        channelId: config.discordChannelId,
-        content
-      });
-      testPostLatestPosted = 1;
-      state.testPostLatestProposalDone = true;
+      try {
+        const content = await buildLatestProposalTestMessage({
+          daoLabel: latest.target.label,
+          proposal: latest.proposal,
+          realmPubkey: latest.target.realmPubkey,
+          fetchDescriptionFromLink: config.fetchDescriptionFromLink
+        });
+        await sendDiscordMessage({
+          token: config.discordToken,
+          channelId: config.discordChannelId,
+          content
+        });
+        testPostLatestPosted = 1;
+        state.testPostLatestProposalDone = true;
+      } catch (error) {
+        sendErrors += 1;
+        console.error("[cron] failed test latest proposal send:", error);
+      }
     }
   }
 
@@ -268,12 +275,17 @@ export async function runCronOnce(config = getConfig()): Promise<RunStats> {
             realmPubkey: target.realmPubkey,
             fetchDescriptionFromLink: config.fetchDescriptionFromLink
           });
-          await sendDiscordMessage({
-            token: config.discordToken,
-            channelId: config.discordChannelId,
-            content: message
-          });
-          createdPosted += 1;
+          try {
+            await sendDiscordMessage({
+              token: config.discordToken,
+              channelId: config.discordChannelId,
+              content: message
+            });
+            createdPosted += 1;
+          } catch (error) {
+            sendErrors += 1;
+            console.error(`[cron] failed created send for ${target.label} ${proposal.pubkey}:`, error);
+          }
         } else {
           seededWithoutAlert += 1;
         }
@@ -294,13 +306,18 @@ export async function runCronOnce(config = getConfig()): Promise<RunStats> {
           realmPubkey: target.realmPubkey,
           fetchDescriptionFromLink: config.fetchDescriptionFromLink
         });
-        await sendDiscordMessage({
-          token: config.discordToken,
-          channelId: config.discordChannelId,
-          content: message
-        });
-        known.announcedVoting = true;
-        votingPosted += 1;
+        try {
+          await sendDiscordMessage({
+            token: config.discordToken,
+            channelId: config.discordChannelId,
+            content: message
+          });
+          known.announcedVoting = true;
+          votingPosted += 1;
+        } catch (error) {
+          sendErrors += 1;
+          console.error(`[cron] failed voting send for ${target.label} ${proposal.pubkey}:`, error);
+        }
       }
 
       known.lastState = proposal.state;
@@ -327,6 +344,7 @@ export async function runCronOnce(config = getConfig()): Promise<RunStats> {
     stateInitializedBeforeRun,
     fetchErrors,
     newTargetsSeeded,
-    testPostLatestPosted
+    testPostLatestPosted,
+    sendErrors
   };
 }
