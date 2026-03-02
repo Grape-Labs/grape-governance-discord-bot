@@ -62,11 +62,11 @@ npm run dev
    - `UPSTASH_REDIS_REST_TOKEN`
 5. Deploy.
 
-Cron schedule is in [vercel.json](/Users/kirk/Development/grape-governance-discord-bot/vercel.json) and defaults to every 5 minutes:
+Cron schedule is in [vercel.json](/Users/kirk/Development/grape-governance-discord-bot/vercel.json) and is set to once per day (Hobby-compatible):
 
 ```json
 {
-  "crons": [{ "path": "/api/cron", "schedule": "*/5 * * * *" }]
+  "crons": [{ "path": "/api/cron", "schedule": "0 0 * * *" }]
 }
 ```
 
