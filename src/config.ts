@@ -3,6 +3,7 @@ import path from "node:path";
 const DEFAULT_REALM = "By2sVGZXwfQq6rAiAM3rNPJ9iQfb5e2QhnF4YjJ4Bip";
 const DEFAULT_PROGRAM_NAMESPACE = "GovER5Lthms3bLBqWub97yVrMmEogzX7xNjdXpPPCVZw";
 const DEFAULT_SHYFT_URL = "https://grape.shyft.to/v1/graphql/";
+const DEFAULT_LABEL = "Grape DAO";
 
 function envBool(value: string | undefined, fallback: boolean): boolean {
   if (!value) return fallback;
@@ -21,8 +22,7 @@ function envInt(value: string | undefined, fallback: number): number {
 export type AppConfig = {
   discordToken: string;
   discordChannelId: string;
-  realmPubkey: string;
-  programNamespace: string;
+  daoTargets: DaoTarget[];
   shyftGraphqlUrl: string;
   pollIntervalMs: number;
   stateFilePath: string;
@@ -30,6 +30,51 @@ export type AppConfig = {
   fetchDescriptionFromLink: boolean;
   proposalScanLimit: number;
 };
+
+export type DaoTarget = {
+  label: string;
+  realmPubkey: string;
+  programNamespace: string;
+};
+
+function parseDaoTargets(raw: string | undefined): DaoTarget[] {
+  if (!raw?.trim()) {
+    return [
+      {
+        label: DEFAULT_LABEL,
+        realmPubkey: process.env.REALM_PUBKEY?.trim() || DEFAULT_REALM,
+        programNamespace: process.env.GOV_PROGRAM_NAMESPACE?.trim() || DEFAULT_PROGRAM_NAMESPACE
+      }
+    ];
+  }
+
+  const parsed: DaoTarget[] = [];
+  const entries = raw
+    .split(";")
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+
+  for (const [index, entry] of entries.entries()) {
+    const [realmPubkey, programNamespace, label] = entry.split("@").map((x) => x.trim());
+    if (!realmPubkey || !programNamespace) {
+      throw new Error(
+        `Invalid DAO_TARGETS entry "${entry}". Expected "REALM@PROGRAM_NAMESPACE@OPTIONAL_LABEL".`
+      );
+    }
+
+    parsed.push({
+      label: label || `DAO ${index + 1}`,
+      realmPubkey,
+      programNamespace
+    });
+  }
+
+  if (!parsed.length) {
+    throw new Error("DAO_TARGETS was provided but no valid entries were parsed.");
+  }
+
+  return parsed;
+}
 
 export function getConfig(): AppConfig {
   const discordToken = process.env.DISCORD_BOT_TOKEN?.trim();
@@ -45,8 +90,7 @@ export function getConfig(): AppConfig {
   return {
     discordToken,
     discordChannelId,
-    realmPubkey: process.env.REALM_PUBKEY?.trim() || DEFAULT_REALM,
-    programNamespace: process.env.GOV_PROGRAM_NAMESPACE?.trim() || DEFAULT_PROGRAM_NAMESPACE,
+    daoTargets: parseDaoTargets(process.env.DAO_TARGETS),
     shyftGraphqlUrl: process.env.SHYFT_GRAPHQL_URL?.trim() || DEFAULT_SHYFT_URL,
     pollIntervalMs: envInt(process.env.POLL_INTERVAL_MS, 30_000),
     stateFilePath: path.resolve(process.cwd(), process.env.STATE_FILE?.trim() || ".bot-state/grape-proposal-state.json"),

@@ -1,6 +1,6 @@
 import "dotenv/config";
 import { Client, GatewayIntentBits, type SendableChannels } from "discord.js";
-import { getConfig } from "./config.js";
+import { getConfig, type DaoTarget } from "./config.js";
 import { fetchRealmProposals } from "./shyft.js";
 import { StateStore } from "./state-store.js";
 import type { ProposalRecord } from "./types.js";
@@ -71,6 +71,7 @@ function proposalUrl(realmPubkey: string, proposalPubkey: string): string {
 }
 
 async function buildCreatedMessage(params: {
+  daoLabel: string;
   proposal: ProposalRecord;
   realmPubkey: string;
   fetchDescriptionFromLink: boolean;
@@ -78,6 +79,7 @@ async function buildCreatedMessage(params: {
   const description = await getDescription(params.proposal, params.fetchDescriptionFromLink);
   const lines = [
     "New Proposal Created",
+    `DAO: ${params.daoLabel}`,
     `Title: ${params.proposal.name}`,
     `Description: ${ellipsize(description, 1200)}`,
     `Proposal: ${proposalUrl(params.realmPubkey, params.proposal.pubkey)}`
@@ -87,6 +89,7 @@ async function buildCreatedMessage(params: {
 }
 
 async function buildVotingMessage(params: {
+  daoLabel: string;
   proposal: ProposalRecord;
   realmPubkey: string;
   fetchDescriptionFromLink: boolean;
@@ -94,6 +97,7 @@ async function buildVotingMessage(params: {
   const description = await getDescription(params.proposal, params.fetchDescriptionFromLink);
   const lines = [
     "Proposal Moved To Voting",
+    `DAO: ${params.daoLabel}`,
     `Title: ${params.proposal.name}`,
     `Description: ${ellipsize(description, 1200)}`,
     `Proposal: ${proposalUrl(params.realmPubkey, params.proposal.pubkey)}`
@@ -114,6 +118,10 @@ function assertSendableChannel(channel: unknown): asserts channel is SendableCha
   }
 }
 
+function proposalStateKey(target: DaoTarget, proposal: ProposalRecord): string {
+  return `${target.realmPubkey}:${proposal.pubkey}`;
+}
+
 async function main(): Promise<void> {
   const config = getConfig();
   const stateStore = new StateStore(config.stateFilePath);
@@ -129,53 +137,74 @@ async function main(): Promise<void> {
     pollInFlight = true;
 
     try {
-      const proposals = await fetchRealmProposals({
-        shyftUrl: config.shyftGraphqlUrl,
-        programNamespace: config.programNamespace,
-        realmPubkey: config.realmPubkey,
-        limit: config.proposalScanLimit
-      });
+      const targetResults = await Promise.all(
+        config.daoTargets.map(async (target) => {
+          try {
+            const proposals = await fetchRealmProposals({
+              shyftUrl: config.shyftGraphqlUrl,
+              programNamespace: target.programNamespace,
+              realmPubkey: target.realmPubkey,
+              limit: config.proposalScanLimit
+            });
+            return { target, proposals };
+          } catch (error) {
+            console.error(
+              `[poll] failed to fetch ${target.label} (${target.realmPubkey}, ${target.programNamespace}):`,
+              error
+            );
+            return { target, proposals: [] as ProposalRecord[] };
+          }
+        })
+      );
 
       const state = await stateStore.load();
       const channelRef = await client.channels.fetch(config.discordChannelId);
       assertSendableChannel(channelRef);
       const channel = channelRef;
 
-      for (const proposal of proposals) {
-        const known = state.proposals[proposal.pubkey];
-        const nowVoting = isVotingState(proposal.state);
+      let totalFetched = 0;
+      for (const { target, proposals } of targetResults) {
+        totalFetched += proposals.length;
 
-        if (!known) {
-          const shouldAnnounceCreate = state.initialized || config.announceExistingOnStart;
-          if (shouldAnnounceCreate) {
-            const message = await buildCreatedMessage({
+        for (const proposal of proposals) {
+          const key = proposalStateKey(target, proposal);
+          const known = state.proposals[key];
+          const nowVoting = isVotingState(proposal.state);
+
+          if (!known) {
+            const shouldAnnounceCreate = state.initialized || config.announceExistingOnStart;
+            if (shouldAnnounceCreate) {
+              const message = await buildCreatedMessage({
+                daoLabel: target.label,
+                proposal,
+                realmPubkey: target.realmPubkey,
+                fetchDescriptionFromLink: config.fetchDescriptionFromLink
+              });
+              await channel.send({ content: message });
+            }
+
+            state.proposals[key] = {
+              lastState: proposal.state,
+              announcedCreated: true,
+              announcedVoting: nowVoting
+            };
+            continue;
+          }
+
+          const wasVoting = isVotingState(known.lastState);
+          if (!wasVoting && nowVoting && !known.announcedVoting) {
+            const message = await buildVotingMessage({
+              daoLabel: target.label,
               proposal,
-              realmPubkey: config.realmPubkey,
+              realmPubkey: target.realmPubkey,
               fetchDescriptionFromLink: config.fetchDescriptionFromLink
             });
             await channel.send({ content: message });
+            known.announcedVoting = true;
           }
 
-          state.proposals[proposal.pubkey] = {
-            lastState: proposal.state,
-            announcedCreated: true,
-            announcedVoting: nowVoting
-          };
-          continue;
+          known.lastState = proposal.state;
         }
-
-        const wasVoting = isVotingState(known.lastState);
-        if (!wasVoting && nowVoting && !known.announcedVoting) {
-          const message = await buildVotingMessage({
-            proposal,
-            realmPubkey: config.realmPubkey,
-            fetchDescriptionFromLink: config.fetchDescriptionFromLink
-          });
-          await channel.send({ content: message });
-          known.announcedVoting = true;
-        }
-
-        known.lastState = proposal.state;
       }
 
       if (!state.initialized) {
@@ -183,7 +212,9 @@ async function main(): Promise<void> {
       }
 
       await stateStore.save(state);
-      console.log(`[poll] proposals=${proposals.length} tracked=${Object.keys(state.proposals).length}`);
+      console.log(
+        `[poll] targets=${config.daoTargets.length} proposals=${totalFetched} tracked=${Object.keys(state.proposals).length}`
+      );
     } catch (error) {
       console.error("[poll] failed:", error);
     } finally {
