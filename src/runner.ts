@@ -406,7 +406,7 @@ export async function runCronOnce(config = getConfig()): Promise<RunStats> {
       }
 
       const wasVoting = isVotingState(known.lastState);
-      if (!wasVoting && nowVoting && !known.announcedVoting) {
+      if (!wasVoting && nowVoting) {
         const message = await buildVotingMessage({
           daoLabel: target.label,
           proposal,
