@@ -184,6 +184,8 @@ export type RunStats = {
   fetchErrors: number;
   newTargetsSeeded: number;
   testPostLatestPosted: number;
+  testPostLatestSkippedAlreadyDone: number;
+  testPostLatestResetApplied: number;
   sendErrors: number;
 };
 
@@ -219,37 +221,78 @@ export async function runCronOnce(config = getConfig()): Promise<RunStats> {
   let fetchErrors = 0;
   let newTargetsSeeded = 0;
   let testPostLatestPosted = 0;
+  let testPostLatestSkippedAlreadyDone = 0;
+  let testPostLatestResetApplied = 0;
   let sendErrors = 0;
 
-  if (config.testPostLatestProposalOnce && !state.testPostLatestProposalDone) {
-    let latest: { target: DaoTarget; proposal: ProposalRecord } | null = null;
-    for (const { target, proposals } of targetResults) {
-      for (const proposal of proposals) {
-        if (!latest || proposal.draftAt > latest.proposal.draftAt) {
-          latest = { target, proposal };
+  if (config.testPostLatestProposalReset) {
+    state.testPostLatestProposalDone = false;
+    state.testPostLatestProposalDoneByTarget = {};
+    testPostLatestResetApplied = 1;
+  }
+
+  if (config.testPostLatestProposalOnce) {
+    if (config.testPostLatestProposalEachDao) {
+      for (const { target, proposals } of targetResults) {
+        if (proposals.length === 0) continue;
+        const targetKey = targetStateKey(target);
+        if (state.testPostLatestProposalDoneByTarget[targetKey]) {
+          testPostLatestSkippedAlreadyDone += 1;
+          continue;
+        }
+
+        const proposal = proposals[0];
+        try {
+          const content = await buildLatestProposalTestMessage({
+            daoLabel: target.label,
+            proposal,
+            realmPubkey: target.realmPubkey,
+            fetchDescriptionFromLink: config.fetchDescriptionFromLink
+          });
+          await sendDiscordMessage({
+            token: config.discordToken,
+            channelId: config.discordChannelId,
+            content
+          });
+          testPostLatestPosted += 1;
+          state.testPostLatestProposalDoneByTarget[targetKey] = true;
+        } catch (error) {
+          sendErrors += 1;
+          console.error(`[cron] failed test latest proposal send for ${target.label} ${proposal.pubkey}:`, error);
         }
       }
-    }
-
-    if (latest) {
-      try {
-        const content = await buildLatestProposalTestMessage({
-          daoLabel: latest.target.label,
-          proposal: latest.proposal,
-          realmPubkey: latest.target.realmPubkey,
-          fetchDescriptionFromLink: config.fetchDescriptionFromLink
-        });
-        await sendDiscordMessage({
-          token: config.discordToken,
-          channelId: config.discordChannelId,
-          content
-        });
-        testPostLatestPosted = 1;
-        state.testPostLatestProposalDone = true;
-      } catch (error) {
-        sendErrors += 1;
-        console.error("[cron] failed test latest proposal send:", error);
+    } else if (!state.testPostLatestProposalDone) {
+      let latest: { target: DaoTarget; proposal: ProposalRecord } | null = null;
+      for (const { target, proposals } of targetResults) {
+        for (const proposal of proposals) {
+          if (!latest || proposal.draftAt > latest.proposal.draftAt) {
+            latest = { target, proposal };
+          }
+        }
       }
+
+      if (latest) {
+        try {
+          const content = await buildLatestProposalTestMessage({
+            daoLabel: latest.target.label,
+            proposal: latest.proposal,
+            realmPubkey: latest.target.realmPubkey,
+            fetchDescriptionFromLink: config.fetchDescriptionFromLink
+          });
+          await sendDiscordMessage({
+            token: config.discordToken,
+            channelId: config.discordChannelId,
+            content
+          });
+          testPostLatestPosted = 1;
+          state.testPostLatestProposalDone = true;
+        } catch (error) {
+          sendErrors += 1;
+          console.error("[cron] failed test latest proposal send:", error);
+        }
+      }
+    } else {
+      testPostLatestSkippedAlreadyDone = 1;
     }
   }
 
@@ -345,6 +388,8 @@ export async function runCronOnce(config = getConfig()): Promise<RunStats> {
     fetchErrors,
     newTargetsSeeded,
     testPostLatestPosted,
+    testPostLatestSkippedAlreadyDone,
+    testPostLatestResetApplied,
     sendErrors
   };
 }

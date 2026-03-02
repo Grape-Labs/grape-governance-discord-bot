@@ -20,4 +20,5 @@ export type BotState = {
   proposals: Record<string, KnownProposalState>;
   seededTargets: Record<string, boolean>;
   testPostLatestProposalDone: boolean;
+  testPostLatestProposalDoneByTarget: Record<string, boolean>;
 };
