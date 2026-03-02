@@ -76,6 +76,7 @@ Cron schedule is in [vercel.json](/Users/kirk/Development/grape-governance-disco
 - `STATE_STORE=file` is local-only. On Vercel it is ephemeral and not reliable for proposal change detection.
 - Check Vercel function logs for the `stats` payload (`proposalsFetched`, `createdPosted`, `votingPosted`) after each cron run.
 - If `stateInitializedBeforeRun=false` and `seededWithoutAlert>0`, that run only seeded state (expected when `ANNOUNCE_EXISTING_ON_START=false`), so no Discord create messages are sent on that first run.
+- When you add a new entry to `DAO_TARGETS`, existing proposals in that newly added DAO are seeded silently once (`newTargetsSeeded>0`) to avoid backfilling/spamming old proposals.
 
 ## Security
 

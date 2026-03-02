@@ -23,6 +23,10 @@ function proposalStateKey(target: DaoTarget, proposal: ProposalRecord): string {
   return `${target.realmPubkey}:${proposal.pubkey}`;
 }
 
+function targetStateKey(target: DaoTarget): string {
+  return `${target.realmPubkey}:${target.programNamespace}`;
+}
+
 function proposalUrl(realmPubkey: string, proposalPubkey: string): string {
   return `https://app.realms.today/dao/${encodeURIComponent(realmPubkey)}/proposal/${encodeURIComponent(proposalPubkey)}?cluster=mainnet`;
 }
@@ -161,6 +165,7 @@ export type RunStats = {
   seededWithoutAlert: number;
   stateInitializedBeforeRun: boolean;
   fetchErrors: number;
+  newTargetsSeeded: number;
 };
 
 export async function runCronOnce(config = getConfig()): Promise<RunStats> {
@@ -193,10 +198,13 @@ export async function runCronOnce(config = getConfig()): Promise<RunStats> {
   let votingPosted = 0;
   let seededWithoutAlert = 0;
   let fetchErrors = 0;
+  let newTargetsSeeded = 0;
 
   for (const { target, proposals, fetchError } of targetResults) {
     if (fetchError) fetchErrors += 1;
     proposalsFetched += proposals.length;
+    const targetKey = targetStateKey(target);
+    const targetWasSeeded = Boolean(state.seededTargets[targetKey]);
 
     for (const proposal of proposals) {
       const key = proposalStateKey(target, proposal);
@@ -204,7 +212,9 @@ export async function runCronOnce(config = getConfig()): Promise<RunStats> {
       const nowVoting = isVotingState(proposal.state);
 
       if (!known) {
-        const shouldAnnounceCreate = state.initialized || config.announceExistingOnStart;
+        const shouldAnnounceCreate = !state.initialized
+          ? config.announceExistingOnStart
+          : targetWasSeeded;
         if (shouldAnnounceCreate) {
           const message = await buildCreatedMessage({
             daoLabel: target.label,
@@ -249,6 +259,11 @@ export async function runCronOnce(config = getConfig()): Promise<RunStats> {
 
       known.lastState = proposal.state;
     }
+
+    if (!fetchError && !targetWasSeeded) {
+      state.seededTargets[targetKey] = true;
+      newTargetsSeeded += 1;
+    }
   }
 
   if (!state.initialized) {
@@ -264,6 +279,7 @@ export async function runCronOnce(config = getConfig()): Promise<RunStats> {
     votingPosted,
     seededWithoutAlert,
     stateInitializedBeforeRun,
-    fetchErrors
+    fetchErrors,
+    newTargetsSeeded
   };
 }
