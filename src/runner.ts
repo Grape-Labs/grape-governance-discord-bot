@@ -22,6 +22,15 @@ function formatProposalStatus(state: unknown): string {
   return normalized.replace(/_/g, " ");
 }
 
+function formatProposalAction(state: unknown): string {
+  if (isVotingState(state)) return "Action: DAO members, please vote now.";
+  const normalized = String(state ?? "").trim().toUpperCase();
+  if (normalized === "DRAFT" || toNum(state) === 0) {
+    return "Action: Please review this draft proposal.";
+  }
+  return "Action: Please review this proposal.";
+}
+
 function ellipsize(value: string, maxLen: number): string {
   if (value.length <= maxLen) return value;
   return `${value.slice(0, maxLen - 3)}...`;
@@ -149,6 +158,7 @@ async function buildCreatedMessage(params: {
     `DAO: ${params.daoLabel}`,
     `Title: ${params.proposal.name}`,
     `Status: ${formatProposalStatus(params.proposal.state)}`,
+    formatProposalAction(params.proposal.state),
     draftedAt ? `Drafted At: ${draftedAt}` : null,
     votingAt ? `Voting At: ${votingAt}` : null,
     `Description: ${ellipsize(description, 1200)}`,
@@ -167,10 +177,11 @@ async function buildVotingMessage(params: {
   const draftedAt = formatDiscordTimestamp(params.proposal.draftAt);
   const votingAt = formatDiscordTimestamp(params.proposal.votingAt);
   const lines = [
-    "Proposal Moved To Voting",
+    "PROPOSAL NOW VOTING",
     `DAO: ${params.daoLabel}`,
     `Title: ${params.proposal.name}`,
     `Status: ${formatProposalStatus(params.proposal.state)}`,
+    formatProposalAction(params.proposal.state),
     draftedAt ? `Drafted At: ${draftedAt}` : null,
     votingAt ? `Voting At: ${votingAt}` : null,
     `Description: ${ellipsize(description, 1200)}`,
@@ -193,6 +204,7 @@ async function buildLatestProposalTestMessage(params: {
     `DAO: ${params.daoLabel}`,
     `Title: ${params.proposal.name}`,
     `Status: ${formatProposalStatus(params.proposal.state)}`,
+    formatProposalAction(params.proposal.state),
     draftedAt ? `Drafted At: ${draftedAt}` : null,
     votingAt ? `Voting At: ${votingAt}` : null,
     `Description: ${ellipsize(description, 1200)}`,
