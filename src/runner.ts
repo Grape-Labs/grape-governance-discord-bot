@@ -109,6 +109,23 @@ async function buildVotingMessage(params: {
   return ellipsize(lines.join("\n"), 1900);
 }
 
+async function buildLatestProposalTestMessage(params: {
+  daoLabel: string;
+  proposal: ProposalRecord;
+  realmPubkey: string;
+  fetchDescriptionFromLink: boolean;
+}): Promise<string> {
+  const description = await getDescription(params.proposal, params.fetchDescriptionFromLink);
+  const lines = [
+    "Smoke Test: Latest Proposal",
+    `DAO: ${params.daoLabel}`,
+    `Title: ${params.proposal.name}`,
+    `Description: ${ellipsize(description, 1200)}`,
+    `Proposal: ${proposalUrl(params.realmPubkey, params.proposal.pubkey)}`
+  ];
+  return ellipsize(lines.join("\n"), 1900);
+}
+
 async function sendDiscordMessage(params: {
   token: string;
   channelId: string;
@@ -166,6 +183,7 @@ export type RunStats = {
   stateInitializedBeforeRun: boolean;
   fetchErrors: number;
   newTargetsSeeded: number;
+  testPostLatestPosted: number;
 };
 
 export async function runCronOnce(config = getConfig()): Promise<RunStats> {
@@ -199,6 +217,34 @@ export async function runCronOnce(config = getConfig()): Promise<RunStats> {
   let seededWithoutAlert = 0;
   let fetchErrors = 0;
   let newTargetsSeeded = 0;
+  let testPostLatestPosted = 0;
+
+  if (config.testPostLatestProposalOnce && !state.testPostLatestProposalDone) {
+    let latest: { target: DaoTarget; proposal: ProposalRecord } | null = null;
+    for (const { target, proposals } of targetResults) {
+      for (const proposal of proposals) {
+        if (!latest || proposal.draftAt > latest.proposal.draftAt) {
+          latest = { target, proposal };
+        }
+      }
+    }
+
+    if (latest) {
+      const content = await buildLatestProposalTestMessage({
+        daoLabel: latest.target.label,
+        proposal: latest.proposal,
+        realmPubkey: latest.target.realmPubkey,
+        fetchDescriptionFromLink: config.fetchDescriptionFromLink
+      });
+      await sendDiscordMessage({
+        token: config.discordToken,
+        channelId: config.discordChannelId,
+        content
+      });
+      testPostLatestPosted = 1;
+      state.testPostLatestProposalDone = true;
+    }
+  }
 
   for (const { target, proposals, fetchError } of targetResults) {
     if (fetchError) fetchErrors += 1;
@@ -280,6 +326,7 @@ export async function runCronOnce(config = getConfig()): Promise<RunStats> {
     seededWithoutAlert,
     stateInitializedBeforeRun,
     fetchErrors,
-    newTargetsSeeded
+    newTargetsSeeded,
+    testPostLatestPosted
   };
 }

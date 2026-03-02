@@ -6,7 +6,8 @@ import type { BotState } from "./types.js";
 const EMPTY_STATE: BotState = {
   initialized: false,
   proposals: {},
-  seededTargets: {}
+  seededTargets: {},
+  testPostLatestProposalDone: false
 };
 
 export interface StateStore {
@@ -24,7 +25,8 @@ export class FileStateStore implements StateStore {
       return {
         initialized: Boolean(parsed?.initialized),
         proposals: parsed?.proposals ?? {},
-        seededTargets: parsed?.seededTargets ?? {}
+        seededTargets: parsed?.seededTargets ?? {},
+        testPostLatestProposalDone: Boolean(parsed?.testPostLatestProposalDone)
       };
     } catch {
       return { ...EMPTY_STATE };
@@ -51,7 +53,8 @@ export class RedisStateStore implements StateStore {
       return {
         initialized: Boolean(parsed?.initialized),
         proposals: parsed?.proposals ?? {},
-        seededTargets: parsed?.seededTargets ?? {}
+        seededTargets: parsed?.seededTargets ?? {},
+        testPostLatestProposalDone: Boolean(parsed?.testPostLatestProposalDone)
       };
     } catch {
       return { ...EMPTY_STATE };

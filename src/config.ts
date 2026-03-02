@@ -29,6 +29,7 @@ export type AppConfig = {
   stateFilePath: string;
   announceExistingOnStart: boolean;
   fetchDescriptionFromLink: boolean;
+  testPostLatestProposalOnce: boolean;
   proposalScanLimit: number;
   cronSecret: string | null;
 };
@@ -131,6 +132,7 @@ export function getConfig(): AppConfig {
     stateFilePath: path.resolve(process.cwd(), process.env.STATE_FILE?.trim() || ".bot-state/grape-proposal-state.json"),
     announceExistingOnStart,
     fetchDescriptionFromLink: envBool(process.env.FETCH_DESCRIPTION_FROM_LINK, true),
+    testPostLatestProposalOnce: envBool(process.env.TEST_POST_LATEST_PROPOSAL_ONCE, false),
     proposalScanLimit: envInt(process.env.PROPOSAL_SCAN_LIMIT, 1200),
     cronSecret: process.env.CRON_SECRET?.trim() || null
   };

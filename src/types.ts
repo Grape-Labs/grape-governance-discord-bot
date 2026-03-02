@@ -19,4 +19,5 @@ export type BotState = {
   initialized: boolean;
   proposals: Record<string, KnownProposalState>;
   seededTargets: Record<string, boolean>;
+  testPostLatestProposalDone: boolean;
 };
