@@ -58,6 +58,8 @@ npm run dev
 3. Add env vars from `.env.example` in Vercel Project Settings.
 4. Create and attach an Upstash Redis integration in Vercel (recommended), then set:
    - `STATE_STORE=redis`
+   - `UPSTASH_REDIS_REST_URL`
+   - `UPSTASH_REDIS_REST_TOKEN`
 5. Deploy.
 
 Cron schedule is in [vercel.json](/Users/kirk/Development/grape-governance-discord-bot/vercel.json) and defaults to every 5 minutes:
@@ -67,6 +69,12 @@ Cron schedule is in [vercel.json](/Users/kirk/Development/grape-governance-disco
   "crons": [{ "path": "/api/cron", "schedule": "*/5 * * * *" }]
 }
 ```
+
+## Troubleshooting
+
+- If `STATE_STORE=redis`, you must set Redis credentials or the cron function will fail fast.
+- `STATE_STORE=file` is local-only. On Vercel it is ephemeral and not reliable for proposal change detection.
+- Check Vercel function logs for the `stats` payload (`proposalsFetched`, `createdPosted`, `votingPosted`) after each cron run.
 
 ## Security
 

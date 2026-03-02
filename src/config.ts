@@ -79,13 +79,14 @@ function parseDaoTargets(raw: string | undefined): DaoTarget[] {
 }
 
 function getDefaultStateStore(): "redis" | "file" {
-  if (
+  return hasRedisEnvVars() ? "redis" : "file";
+}
+
+function hasRedisEnvVars(): boolean {
+  return Boolean(
     (process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN) ||
-    (process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN)
-  ) {
-    return "redis";
-  }
-  return "file";
+      (process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN)
+  );
 }
 
 export function getConfig(): AppConfig {
@@ -99,21 +100,36 @@ export function getConfig(): AppConfig {
     throw new Error("Missing DISCORD_CHANNEL_ID.");
   }
 
+  const requestedStateStore = process.env.STATE_STORE?.trim().toLowerCase();
+  const stateStore: "redis" | "file" =
+    requestedStateStore === "file"
+      ? "file"
+      : requestedStateStore === "redis"
+      ? "redis"
+      : getDefaultStateStore();
+
+  if (stateStore === "redis" && !hasRedisEnvVars()) {
+    throw new Error(
+      "STATE_STORE=redis requires UPSTASH_REDIS_REST_URL + UPSTASH_REDIS_REST_TOKEN (or KV_REST_API_URL + KV_REST_API_TOKEN)."
+    );
+  }
+
+  const announceExistingOnStart = envBool(process.env.ANNOUNCE_EXISTING_ON_START, false);
+  if (process.env.VERCEL && stateStore === "file" && !announceExistingOnStart) {
+    throw new Error(
+      "STATE_STORE=file on Vercel is ephemeral and ANNOUNCE_EXISTING_ON_START=false suppresses all create alerts. Use STATE_STORE=redis."
+    );
+  }
+
   return {
     discordToken,
     discordChannelId,
     daoTargets: parseDaoTargets(process.env.DAO_TARGETS),
     shyftGraphqlUrl: process.env.SHYFT_GRAPHQL_URL?.trim() || DEFAULT_SHYFT_URL,
-    stateStore: (
-      process.env.STATE_STORE?.trim().toLowerCase() === "file"
-        ? "file"
-        : process.env.STATE_STORE?.trim().toLowerCase() === "redis"
-        ? "redis"
-        : getDefaultStateStore()
-    ),
+    stateStore,
     stateKey: process.env.STATE_KEY?.trim() || "grape-governance-discord-bot:state",
     stateFilePath: path.resolve(process.cwd(), process.env.STATE_FILE?.trim() || ".bot-state/grape-proposal-state.json"),
-    announceExistingOnStart: envBool(process.env.ANNOUNCE_EXISTING_ON_START, false),
+    announceExistingOnStart,
     fetchDescriptionFromLink: envBool(process.env.FETCH_DESCRIPTION_FROM_LINK, true),
     proposalScanLimit: envInt(process.env.PROPOSAL_SCAN_LIMIT, 1200),
     cronSecret: process.env.CRON_SECRET?.trim() || null
