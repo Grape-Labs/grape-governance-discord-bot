@@ -31,6 +31,57 @@ function proposalUrl(realmPubkey: string, proposalPubkey: string): string {
   return `https://governance.so/proposal/${encodeURIComponent(realmPubkey)}/${encodeURIComponent(proposalPubkey)}`;
 }
 
+function normalizeWhitespace(value: string): string {
+  return value.replace(/\s+/g, " ").trim();
+}
+
+function looksLikeHtmlDocument(value: string): boolean {
+  const lower = value.trim().toLowerCase();
+  if (!lower) return false;
+  if (lower.startsWith("<!doctype html") || lower.startsWith("<html")) return true;
+  return /<(html|head|body|script|style|meta|link)\b/.test(lower.slice(0, 2000));
+}
+
+function sanitizeDescriptionText(raw: string): string | null {
+  let value = normalizeWhitespace(raw);
+  if (!value) return null;
+  if (looksLikeHtmlDocument(value)) return null;
+  if (value.includes("github.githubassets.com") || value.includes("octolytics")) return null;
+
+  value = value
+    .replace(/```[\s\S]*?```/g, " ")
+    .replace(/!\[[^\]]*]\([^)]+\)/g, " ")
+    .replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, "$1")
+    .replace(/`([^`]+)`/g, "$1")
+    .replace(/(^|\s)#{1,6}\s+/g, " ")
+    .replace(/(^|\s)[*-]\s+/g, " ");
+
+  value = normalizeWhitespace(value);
+  if (!value) return null;
+
+  const angleBracketCount = (value.match(/[<>]/g) || []).length;
+  if (angleBracketCount > Math.max(10, Math.floor(value.length * 0.05))) {
+    return null;
+  }
+
+  return value;
+}
+
+function toUnixSeconds(value: number | null | undefined): number | null {
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) return null;
+  const raw = Math.floor(value);
+  if (raw > 10_000_000_000) {
+    return Math.floor(raw / 1000);
+  }
+  return raw;
+}
+
+function formatDiscordTimestamp(value: number | null | undefined): string | null {
+  const unix = toUnixSeconds(value);
+  if (!unix) return null;
+  return `<t:${unix}:F> (<t:${unix}:R>)`;
+}
+
 async function fetchDescriptionText(url: string): Promise<string | null> {
   try {
     const controller = new AbortController();
@@ -46,7 +97,7 @@ async function fetchDescriptionText(url: string): Promise<string | null> {
 
     if (!res.ok) return null;
 
-    const contentType = res.headers.get("content-type") || "";
+    const contentType = (res.headers.get("content-type") || "").toLowerCase();
     if (contentType.includes("application/json")) {
       const json = (await res.json()) as Record<string, unknown>;
       const description =
@@ -54,12 +105,13 @@ async function fetchDescriptionText(url: string): Promise<string | null> {
         (typeof json.body === "string" && json.body) ||
         (typeof json.content === "string" && json.content) ||
         null;
-      return description ? description.replace(/\s+/g, " ").trim() : null;
+      if (!description) return null;
+      return sanitizeDescriptionText(description);
     }
 
     const text = await res.text();
-    const compact = text.replace(/\s+/g, " ").trim();
-    return compact || null;
+    if (contentType.includes("text/html")) return null;
+    return sanitizeDescriptionText(text);
   } catch {
     return null;
   }
@@ -82,13 +134,17 @@ async function buildCreatedMessage(params: {
   fetchDescriptionFromLink: boolean;
 }): Promise<string> {
   const description = await getDescription(params.proposal, params.fetchDescriptionFromLink);
+  const draftedAt = formatDiscordTimestamp(params.proposal.draftAt);
+  const votingAt = formatDiscordTimestamp(params.proposal.votingAt);
   const lines = [
     "New Proposal Created",
     `DAO: ${params.daoLabel}`,
     `Title: ${params.proposal.name}`,
+    draftedAt ? `Drafted At: ${draftedAt}` : null,
+    votingAt ? `Voting At: ${votingAt}` : null,
     `Description: ${ellipsize(description, 1200)}`,
     `Proposal: ${proposalUrl(params.realmPubkey, params.proposal.pubkey)}`
-  ];
+  ].filter((line): line is string => Boolean(line));
   return ellipsize(lines.join("\n"), 1900);
 }
 
@@ -99,13 +155,17 @@ async function buildVotingMessage(params: {
   fetchDescriptionFromLink: boolean;
 }): Promise<string> {
   const description = await getDescription(params.proposal, params.fetchDescriptionFromLink);
+  const draftedAt = formatDiscordTimestamp(params.proposal.draftAt);
+  const votingAt = formatDiscordTimestamp(params.proposal.votingAt);
   const lines = [
     "Proposal Moved To Voting",
     `DAO: ${params.daoLabel}`,
     `Title: ${params.proposal.name}`,
+    draftedAt ? `Drafted At: ${draftedAt}` : null,
+    votingAt ? `Voting At: ${votingAt}` : null,
     `Description: ${ellipsize(description, 1200)}`,
     `Proposal: ${proposalUrl(params.realmPubkey, params.proposal.pubkey)}`
-  ];
+  ].filter((line): line is string => Boolean(line));
   return ellipsize(lines.join("\n"), 1900);
 }
 
@@ -116,13 +176,17 @@ async function buildLatestProposalTestMessage(params: {
   fetchDescriptionFromLink: boolean;
 }): Promise<string> {
   const description = await getDescription(params.proposal, params.fetchDescriptionFromLink);
+  const draftedAt = formatDiscordTimestamp(params.proposal.draftAt);
+  const votingAt = formatDiscordTimestamp(params.proposal.votingAt);
   const lines = [
     "Smoke Test: Latest Proposal",
     `DAO: ${params.daoLabel}`,
     `Title: ${params.proposal.name}`,
+    draftedAt ? `Drafted At: ${draftedAt}` : null,
+    votingAt ? `Voting At: ${votingAt}` : null,
     `Description: ${ellipsize(description, 1200)}`,
     `Proposal: ${proposalUrl(params.realmPubkey, params.proposal.pubkey)}`
-  ];
+  ].filter((line): line is string => Boolean(line));
   return ellipsize(lines.join("\n"), 1900);
 }
 
