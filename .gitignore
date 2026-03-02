@@ -2,6 +2,7 @@ node_modules/
 dist/
 .env
 .bot-state/
+.vercel/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*

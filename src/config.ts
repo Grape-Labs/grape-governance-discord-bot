@@ -24,11 +24,13 @@ export type AppConfig = {
   discordChannelId: string;
   daoTargets: DaoTarget[];
   shyftGraphqlUrl: string;
-  pollIntervalMs: number;
+  stateStore: "redis" | "file";
+  stateKey: string;
   stateFilePath: string;
   announceExistingOnStart: boolean;
   fetchDescriptionFromLink: boolean;
   proposalScanLimit: number;
+  cronSecret: string | null;
 };
 
 export type DaoTarget = {
@@ -76,6 +78,16 @@ function parseDaoTargets(raw: string | undefined): DaoTarget[] {
   return parsed;
 }
 
+function getDefaultStateStore(): "redis" | "file" {
+  if (
+    (process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN) ||
+    (process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN)
+  ) {
+    return "redis";
+  }
+  return "file";
+}
+
 export function getConfig(): AppConfig {
   const discordToken = process.env.DISCORD_BOT_TOKEN?.trim();
   const discordChannelId = process.env.DISCORD_CHANNEL_ID?.trim();
@@ -92,10 +104,18 @@ export function getConfig(): AppConfig {
     discordChannelId,
     daoTargets: parseDaoTargets(process.env.DAO_TARGETS),
     shyftGraphqlUrl: process.env.SHYFT_GRAPHQL_URL?.trim() || DEFAULT_SHYFT_URL,
-    pollIntervalMs: envInt(process.env.POLL_INTERVAL_MS, 30_000),
+    stateStore: (
+      process.env.STATE_STORE?.trim().toLowerCase() === "file"
+        ? "file"
+        : process.env.STATE_STORE?.trim().toLowerCase() === "redis"
+        ? "redis"
+        : getDefaultStateStore()
+    ),
+    stateKey: process.env.STATE_KEY?.trim() || "grape-governance-discord-bot:state",
     stateFilePath: path.resolve(process.cwd(), process.env.STATE_FILE?.trim() || ".bot-state/grape-proposal-state.json"),
     announceExistingOnStart: envBool(process.env.ANNOUNCE_EXISTING_ON_START, false),
     fetchDescriptionFromLink: envBool(process.env.FETCH_DESCRIPTION_FROM_LINK, true),
-    proposalScanLimit: envInt(process.env.PROPOSAL_SCAN_LIMIT, 1200)
+    proposalScanLimit: envInt(process.env.PROPOSAL_SCAN_LIMIT, 1200),
+    cronSecret: process.env.CRON_SECRET?.trim() || null
   };
 }

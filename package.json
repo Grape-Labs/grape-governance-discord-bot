@@ -9,7 +9,7 @@
     "build": "tsc -p tsconfig.json"
   },
   "dependencies": {
-    "discord.js": "^14.23.2",
+    "@upstash/redis": "^1.35.6",
     "dotenv": "^16.4.5"
   },
   "devDependencies": {

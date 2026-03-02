@@ -1,66 +1,82 @@
-# Grape Governance Discord Bot
+# Grape Governance Notifier (Vercel Cron)
 
-Discord bot that watches the Grape DAO realm (`By2sVGZXwfQq6rAiAM3rNPJ9iQfb5e2QhnF4YjJ4Bip`) via Shyft GraphQL and posts:
+Serverless Discord notifier for SPL Governance proposals using Shyft GraphQL.
 
-- New proposal created
-- Proposal moved into voting state
+It posts to a Discord channel when:
+- A new proposal is created
+- A proposal moves into voting state
 
-## What It Tracks
+Supports one or many DAO realms in the same channel.
 
-- Realm: `By2sVGZXwfQq6rAiAM3rNPJ9iQfb5e2QhnF4YjJ4Bip`
-- Program namespace (default): `GovER5Lthms3bLBqWub97yVrMmEogzX7xNjdXpPPCVZw`
-- Polling interval (default): `30s`
-- Supports multiple realms/programs in the same Discord channel via `DAO_TARGETS`
+## Architecture
 
-The bot stores seen proposal state in `.bot-state/grape-proposal-state.json` so it does not repost the same event.
+- `api/cron.ts`: Vercel cron HTTP function
+- `src/runner.ts`: proposal fetch + state transition logic
+- State persistence:
+  - `redis` (recommended on Vercel, persistent)
+  - `file` (local-only fallback)
 
-## Setup
-
-1. Install dependencies:
-
-```bash
-npm install
-```
-
-2. Create env file:
-
-```bash
-cp .env.example .env
-```
-
-3. Fill required env vars in `.env`:
+## Required Environment Variables
 
 - `DISCORD_BOT_TOKEN`
 - `DISCORD_CHANNEL_ID`
+- `CRON_SECRET`
 
-4. Configure watched DAO targets (single or multiple):
+For persistent state via Upstash Redis:
+- `UPSTASH_REDIS_REST_URL`
+- `UPSTASH_REDIS_REST_TOKEN`
+
+## DAO Target Configuration
+
+Use `DAO_TARGETS` (semicolon-separated):
 
 ```env
 DAO_TARGETS=By2sVGZXwfQq6rAiAM3rNPJ9iQfb5e2QhnF4YjJ4Bip@GovER5Lthms3bLBqWub97yVrMmEogzX7xNjdXpPPCVZw@Grape DAO;66Du7mXgS2KMQBUk6m9h3TszMjqZqdWhsG3Duuf69VNW@J9uWvULFL47gtCPvgR3oN7W357iehn5WF2Vn9MJvcSxz@Orca
 ```
 
-Format:
+Format per target:
 - `REALM_PUBKEY@PROGRAM_NAMESPACE@OPTIONAL_LABEL`
-- Separate entries with `;`
 
-5. Run:
+If `DAO_TARGETS` is empty, it falls back to:
+- `REALM_PUBKEY`
+- `GOV_PROGRAM_NAMESPACE`
+
+## Local Run
 
 ```bash
+npm install
+cp .env.example .env
 npm run dev
 ```
 
-## Discord Bot Permissions
+`npm run dev` runs one cron cycle locally (no Discord gateway process).
 
-Your Discord bot should at least have:
+## Vercel Deploy
 
-- View Channel
-- Send Messages
+1. Push repo to GitHub/GitLab/Bitbucket.
+2. Import into Vercel.
+3. Add env vars from `.env.example` in Vercel Project Settings.
+4. Create and attach an Upstash Redis integration in Vercel (recommended), then set:
+   - `STATE_STORE=redis`
+5. Deploy.
 
-Use the bot token from the Discord Developer Portal.
+Cron schedule is in [vercel.json](/Users/kirk/Development/grape-governance-discord-bot/vercel.json) and defaults to every 5 minutes:
 
-## Behavior Notes
+```json
+{
+  "crons": [{ "path": "/api/cron", "schedule": "*/5 * * * *" }]
+}
+```
 
-- On first startup, existing proposals are seeded silently by default (`ANNOUNCE_EXISTING_ON_START=false`).
-- Set `ANNOUNCE_EXISTING_ON_START=true` if you want immediate announcements for already-indexed proposals.
-- If `FETCH_DESCRIPTION_FROM_LINK=true`, the bot fetches proposal description text from `descriptionLink` when possible; otherwise it posts the link.
-- If `DAO_TARGETS` is empty, bot falls back to single-DAO mode using `REALM_PUBKEY` and `GOV_PROGRAM_NAMESPACE`.
+## Security
+
+- `api/cron` checks `Authorization: Bearer <CRON_SECRET>`.
+- Vercel cron uses this automatically when `CRON_SECRET` is configured.
+
+## Discord Credentials Note
+
+For this architecture, you only need:
+- `DISCORD_BOT_TOKEN`
+- `DISCORD_CHANNEL_ID`
+
+`DISCORD_APP_ID` and `DISCORD_PUBLIC_KEY` are not required unless you add slash commands/interactions.
