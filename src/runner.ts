@@ -14,6 +14,14 @@ function isVotingState(state: unknown): boolean {
   return toNum(state) === 2;
 }
 
+function formatProposalStatus(state: unknown): string {
+  const normalized = String(state ?? "").trim().toUpperCase();
+  if (isVotingState(state)) return "Now Voting";
+  if (normalized === "DRAFT" || toNum(state) === 0) return "Draft (To Be Reviewed)";
+  if (!normalized) return "Unknown";
+  return normalized.replace(/_/g, " ");
+}
+
 function ellipsize(value: string, maxLen: number): string {
   if (value.length <= maxLen) return value;
   return `${value.slice(0, maxLen - 3)}...`;
@@ -140,6 +148,7 @@ async function buildCreatedMessage(params: {
     "New Proposal Created",
     `DAO: ${params.daoLabel}`,
     `Title: ${params.proposal.name}`,
+    `Status: ${formatProposalStatus(params.proposal.state)}`,
     draftedAt ? `Drafted At: ${draftedAt}` : null,
     votingAt ? `Voting At: ${votingAt}` : null,
     `Description: ${ellipsize(description, 1200)}`,
@@ -161,6 +170,7 @@ async function buildVotingMessage(params: {
     "Proposal Moved To Voting",
     `DAO: ${params.daoLabel}`,
     `Title: ${params.proposal.name}`,
+    `Status: ${formatProposalStatus(params.proposal.state)}`,
     draftedAt ? `Drafted At: ${draftedAt}` : null,
     votingAt ? `Voting At: ${votingAt}` : null,
     `Description: ${ellipsize(description, 1200)}`,
@@ -182,6 +192,7 @@ async function buildLatestProposalTestMessage(params: {
     "Smoke Test: Latest Proposal",
     `DAO: ${params.daoLabel}`,
     `Title: ${params.proposal.name}`,
+    `Status: ${formatProposalStatus(params.proposal.state)}`,
     draftedAt ? `Drafted At: ${draftedAt}` : null,
     votingAt ? `Voting At: ${votingAt}` : null,
     `Description: ${ellipsize(description, 1200)}`,
