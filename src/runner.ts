@@ -28,7 +28,7 @@ function targetStateKey(target: DaoTarget): string {
 }
 
 function proposalUrl(realmPubkey: string, proposalPubkey: string): string {
-  return `https://app.realms.today/dao/${encodeURIComponent(realmPubkey)}/proposal/${encodeURIComponent(proposalPubkey)}?cluster=mainnet`;
+  return `https://governance.so/proposal/${encodeURIComponent(realmPubkey)}/${encodeURIComponent(proposalPubkey)}`;
 }
 
 async function fetchDescriptionText(url: string): Promise<string | null> {
