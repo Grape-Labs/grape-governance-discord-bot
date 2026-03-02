@@ -158,11 +158,15 @@ export type RunStats = {
   tracked: number;
   createdPosted: number;
   votingPosted: number;
+  seededWithoutAlert: number;
+  stateInitializedBeforeRun: boolean;
+  fetchErrors: number;
 };
 
 export async function runCronOnce(config = getConfig()): Promise<RunStats> {
   const stateStore = createStateStore(config);
   const state = await stateStore.load();
+  const stateInitializedBeforeRun = state.initialized;
 
   const targetResults = await Promise.all(
     config.daoTargets.map(async (target) => {
@@ -173,13 +177,13 @@ export async function runCronOnce(config = getConfig()): Promise<RunStats> {
           realmPubkey: target.realmPubkey,
           limit: config.proposalScanLimit
         });
-        return { target, proposals };
+        return { target, proposals, fetchError: false };
       } catch (error) {
         console.error(
           `[cron] failed to fetch ${target.label} (${target.realmPubkey}, ${target.programNamespace}):`,
           error
         );
-        return { target, proposals: [] as ProposalRecord[] };
+        return { target, proposals: [] as ProposalRecord[], fetchError: true };
       }
     })
   );
@@ -187,8 +191,11 @@ export async function runCronOnce(config = getConfig()): Promise<RunStats> {
   let proposalsFetched = 0;
   let createdPosted = 0;
   let votingPosted = 0;
+  let seededWithoutAlert = 0;
+  let fetchErrors = 0;
 
-  for (const { target, proposals } of targetResults) {
+  for (const { target, proposals, fetchError } of targetResults) {
+    if (fetchError) fetchErrors += 1;
     proposalsFetched += proposals.length;
 
     for (const proposal of proposals) {
@@ -211,11 +218,13 @@ export async function runCronOnce(config = getConfig()): Promise<RunStats> {
             content: message
           });
           createdPosted += 1;
+        } else {
+          seededWithoutAlert += 1;
         }
 
         state.proposals[key] = {
           lastState: proposal.state,
-          announcedCreated: true,
+          announcedCreated: shouldAnnounceCreate,
           announcedVoting: nowVoting
         };
         continue;
@@ -252,6 +261,9 @@ export async function runCronOnce(config = getConfig()): Promise<RunStats> {
     proposalsFetched,
     tracked: Object.keys(state.proposals).length,
     createdPosted,
-    votingPosted
+    votingPosted,
+    seededWithoutAlert,
+    stateInitializedBeforeRun,
+    fetchErrors
   };
 }

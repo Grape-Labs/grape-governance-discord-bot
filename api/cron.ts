@@ -33,6 +33,9 @@ export default async function handler(
 
   try {
     const stats = await runCronOnce(config);
+    console.log(
+      `[cron] ok targets=${stats.targets} fetched=${stats.proposalsFetched} tracked=${stats.tracked} created=${stats.createdPosted} voting=${stats.votingPosted} seededWithoutAlert=${stats.seededWithoutAlert} stateInitializedBeforeRun=${stats.stateInitializedBeforeRun} fetchErrors=${stats.fetchErrors}`
+    );
     res.status(200).json({ ok: true, stats });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";

@@ -75,6 +75,7 @@ Cron schedule is in [vercel.json](/Users/kirk/Development/grape-governance-disco
 - If `STATE_STORE=redis`, you must set Redis credentials or the cron function will fail fast.
 - `STATE_STORE=file` is local-only. On Vercel it is ephemeral and not reliable for proposal change detection.
 - Check Vercel function logs for the `stats` payload (`proposalsFetched`, `createdPosted`, `votingPosted`) after each cron run.
+- If `stateInitializedBeforeRun=false` and `seededWithoutAlert>0`, that run only seeded state (expected when `ANNOUNCE_EXISTING_ON_START=false`), so no Discord create messages are sent on that first run.
 
 ## Security
 
