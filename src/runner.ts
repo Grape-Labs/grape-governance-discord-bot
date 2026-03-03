@@ -70,6 +70,10 @@ function formatProposalInstructionCount(proposal: ProposalRecord): string | null
   return `Instructions: ${count}`;
 }
 
+function proposalRecencyKey(proposal: ProposalRecord): number {
+  return proposal.votingAt ?? proposal.draftAt;
+}
+
 function ellipsize(value: string, maxLen: number): string {
   if (value.length <= maxLen) return value;
   return `${value.slice(0, maxLen - 3)}...`;
@@ -413,6 +417,8 @@ export type RunStats = {
   newTargetsSeeded: number;
   testPostLatestPosted: number;
   testPostLatestSkippedAlreadyDone: number;
+  testPostLatestVotingPosted: number;
+  testPostLatestVotingSkippedAlreadyDone: number;
   testPostLatestResetApplied: number;
   sendErrors: number;
 };
@@ -453,12 +459,15 @@ export async function runCronOnce(config = getConfig()): Promise<RunStats> {
   let newTargetsSeeded = 0;
   let testPostLatestPosted = 0;
   let testPostLatestSkippedAlreadyDone = 0;
+  let testPostLatestVotingPosted = 0;
+  let testPostLatestVotingSkippedAlreadyDone = 0;
   let testPostLatestResetApplied = 0;
   let sendErrors = 0;
 
   if (config.testPostLatestProposalReset) {
     state.testPostLatestProposalDone = false;
     state.testPostLatestProposalDoneByTarget = {};
+    state.testPostLatestVotingProposalDone = false;
     testPostLatestResetApplied = 1;
   }
 
@@ -524,6 +533,43 @@ export async function runCronOnce(config = getConfig()): Promise<RunStats> {
       }
     } else {
       testPostLatestSkippedAlreadyDone = 1;
+    }
+  }
+
+  if (config.testPostLatestVotingProposalOnce) {
+    if (!state.testPostLatestVotingProposalDone) {
+      let latestVoting: { target: DaoTarget; proposal: ProposalRecord } | null = null;
+      for (const { target, proposals } of targetResults) {
+        for (const proposal of proposals) {
+          if (!isVotingState(proposal.state)) continue;
+          if (!latestVoting || proposalRecencyKey(proposal) > proposalRecencyKey(latestVoting.proposal)) {
+            latestVoting = { target, proposal };
+          }
+        }
+      }
+
+      if (latestVoting) {
+        try {
+          const content = await buildVotingMessage({
+            daoLabel: latestVoting.target.label,
+            proposal: latestVoting.proposal,
+            realmPubkey: latestVoting.target.realmPubkey,
+            fetchDescriptionFromLink: config.fetchDescriptionFromLink
+          });
+          await sendDiscordMessage({
+            token: config.discordToken,
+            channelId: config.discordChannelId,
+            content
+          });
+          testPostLatestVotingPosted = 1;
+          state.testPostLatestVotingProposalDone = true;
+        } catch (error) {
+          sendErrors += 1;
+          console.error("[cron] failed test latest voting proposal send:", error);
+        }
+      }
+    } else {
+      testPostLatestVotingSkippedAlreadyDone = 1;
     }
   }
 
@@ -689,6 +735,8 @@ export async function runCronOnce(config = getConfig()): Promise<RunStats> {
     newTargetsSeeded,
     testPostLatestPosted,
     testPostLatestSkippedAlreadyDone,
+    testPostLatestVotingPosted,
+    testPostLatestVotingSkippedAlreadyDone,
     testPostLatestResetApplied,
     sendErrors
   };

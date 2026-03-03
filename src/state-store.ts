@@ -8,7 +8,8 @@ const EMPTY_STATE: BotState = {
   proposals: {},
   seededTargets: {},
   testPostLatestProposalDone: false,
-  testPostLatestProposalDoneByTarget: {}
+  testPostLatestProposalDoneByTarget: {},
+  testPostLatestVotingProposalDone: false
 };
 
 export interface StateStore {
@@ -28,7 +29,8 @@ export class FileStateStore implements StateStore {
         proposals: parsed?.proposals ?? {},
         seededTargets: parsed?.seededTargets ?? {},
         testPostLatestProposalDone: Boolean(parsed?.testPostLatestProposalDone),
-        testPostLatestProposalDoneByTarget: parsed?.testPostLatestProposalDoneByTarget ?? {}
+        testPostLatestProposalDoneByTarget: parsed?.testPostLatestProposalDoneByTarget ?? {},
+        testPostLatestVotingProposalDone: Boolean(parsed?.testPostLatestVotingProposalDone)
       };
     } catch {
       return { ...EMPTY_STATE };
@@ -57,7 +59,8 @@ export class RedisStateStore implements StateStore {
         proposals: parsed?.proposals ?? {},
         seededTargets: parsed?.seededTargets ?? {},
         testPostLatestProposalDone: Boolean(parsed?.testPostLatestProposalDone),
-        testPostLatestProposalDoneByTarget: parsed?.testPostLatestProposalDoneByTarget ?? {}
+        testPostLatestProposalDoneByTarget: parsed?.testPostLatestProposalDoneByTarget ?? {},
+        testPostLatestVotingProposalDone: Boolean(parsed?.testPostLatestVotingProposalDone)
       };
     } catch {
       return { ...EMPTY_STATE };

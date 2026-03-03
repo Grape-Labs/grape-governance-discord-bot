@@ -79,6 +79,7 @@ You can still deploy `api/cron` as a manual/protected HTTP endpoint (requires `C
 - When you add a new entry to `DAO_TARGETS`, existing proposals in that newly added DAO are seeded silently once (`newTargetsSeeded>0`) to avoid backfilling/spamming old proposals.
 - For smoke tests: set `TEST_POST_LATEST_PROPOSAL_ONCE=true`.
 - Add `TEST_POST_LATEST_PROPOSAL_EACH_DAO=true` to post the latest proposal for each DAO target.
+- Set `TEST_POST_LATEST_VOTING_PROPOSAL_ONCE=true` to post the latest proposal currently in Voting state.
 - If a second test run is skipped, set `TEST_POST_LATEST_PROPOSAL_RESET=true` for one run (then turn it back off) and check `testPostLatestResetApplied=1`.
 - If `sendErrors>0`, Discord rejected one or more messages (e.g., wrong channel ID, missing bot permissions, or invalid token). Check adjacent error lines in Function Logs.
 

@@ -31,6 +31,7 @@ export type AppConfig = {
   fetchDescriptionFromLink: boolean;
   testPostLatestProposalOnce: boolean;
   testPostLatestProposalEachDao: boolean;
+  testPostLatestVotingProposalOnce: boolean;
   testPostLatestProposalReset: boolean;
   proposalScanLimit: number;
   cronSecret: string | null;
@@ -136,6 +137,7 @@ export function getConfig(): AppConfig {
     fetchDescriptionFromLink: envBool(process.env.FETCH_DESCRIPTION_FROM_LINK, true),
     testPostLatestProposalOnce: envBool(process.env.TEST_POST_LATEST_PROPOSAL_ONCE, false),
     testPostLatestProposalEachDao: envBool(process.env.TEST_POST_LATEST_PROPOSAL_EACH_DAO, false),
+    testPostLatestVotingProposalOnce: envBool(process.env.TEST_POST_LATEST_VOTING_PROPOSAL_ONCE, false),
     testPostLatestProposalReset: envBool(process.env.TEST_POST_LATEST_PROPOSAL_RESET, false),
     proposalScanLimit: envInt(process.env.PROPOSAL_SCAN_LIMIT, 1200),
     cronSecret: process.env.CRON_SECRET?.trim() || null

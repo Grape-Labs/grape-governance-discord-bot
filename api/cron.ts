@@ -34,7 +34,7 @@ export default async function handler(
   try {
     const stats = await runCronOnce(config);
     console.log(
-      `[cron] ok targets=${stats.targets} fetched=${stats.proposalsFetched} tracked=${stats.tracked} created=${stats.createdPosted} voting=${stats.votingPosted} executed=${stats.executedPosted} completed=${stats.completedPosted} cancelled=${stats.cancelledPosted} seededWithoutAlert=${stats.seededWithoutAlert} stateInitializedBeforeRun=${stats.stateInitializedBeforeRun} fetchErrors=${stats.fetchErrors} newTargetsSeeded=${stats.newTargetsSeeded} testPostLatestPosted=${stats.testPostLatestPosted} testPostLatestSkippedAlreadyDone=${stats.testPostLatestSkippedAlreadyDone} testPostLatestResetApplied=${stats.testPostLatestResetApplied} sendErrors=${stats.sendErrors}`
+      `[cron] ok targets=${stats.targets} fetched=${stats.proposalsFetched} tracked=${stats.tracked} created=${stats.createdPosted} voting=${stats.votingPosted} executed=${stats.executedPosted} completed=${stats.completedPosted} cancelled=${stats.cancelledPosted} seededWithoutAlert=${stats.seededWithoutAlert} stateInitializedBeforeRun=${stats.stateInitializedBeforeRun} fetchErrors=${stats.fetchErrors} newTargetsSeeded=${stats.newTargetsSeeded} testPostLatestPosted=${stats.testPostLatestPosted} testPostLatestSkippedAlreadyDone=${stats.testPostLatestSkippedAlreadyDone} testPostLatestVotingPosted=${stats.testPostLatestVotingPosted} testPostLatestVotingSkippedAlreadyDone=${stats.testPostLatestVotingSkippedAlreadyDone} testPostLatestResetApplied=${stats.testPostLatestResetApplied} sendErrors=${stats.sendErrors}`
     );
     res.status(200).json({ ok: true, stats });
   } catch (error) {

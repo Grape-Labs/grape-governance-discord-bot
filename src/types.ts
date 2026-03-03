@@ -24,4 +24,5 @@ export type BotState = {
   seededTargets: Record<string, boolean>;
   testPostLatestProposalDone: boolean;
   testPostLatestProposalDoneByTarget: Record<string, boolean>;
+  testPostLatestVotingProposalDone: boolean;
 };
