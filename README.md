@@ -86,6 +86,9 @@ You can still deploy `api/cron` as a manual/protected HTTP endpoint (requires `C
 
 - `api/cron` checks `Authorization: Bearer <CRON_SECRET>`.
 - Vercel cron uses this automatically when `CRON_SECRET` is configured.
+- In GitHub Actions, secrets are step-scoped (not job-wide) in [.github/workflows/cron.yml](/Users/kirk/Development/grape-governance-discord-bot/.github/workflows/cron.yml).
+- Protect `main` with required reviews and restrict who can push.
+- Prefer GitHub Environments with required reviewers for production secrets.
 
 ## Discord Credentials Note
 

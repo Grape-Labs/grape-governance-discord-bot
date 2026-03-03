@@ -14,23 +14,6 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    env:
-      DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
-      DISCORD_CHANNEL_ID: ${{ secrets.DISCORD_CHANNEL_ID }}
-      DAO_TARGETS: ${{ secrets.DAO_TARGETS }}
-      REALM_PUBKEY: ${{ secrets.REALM_PUBKEY }}
-      GOV_PROGRAM_NAMESPACE: ${{ secrets.GOV_PROGRAM_NAMESPACE }}
-      SHYFT_GRAPHQL_URL: ${{ secrets.SHYFT_GRAPHQL_URL }}
-      STATE_STORE: ${{ secrets.STATE_STORE }}
-      STATE_KEY: ${{ secrets.STATE_KEY }}
-      UPSTASH_REDIS_REST_URL: ${{ secrets.UPSTASH_REDIS_REST_URL }}
-      UPSTASH_REDIS_REST_TOKEN: ${{ secrets.UPSTASH_REDIS_REST_TOKEN }}
-      ANNOUNCE_EXISTING_ON_START: ${{ secrets.ANNOUNCE_EXISTING_ON_START }}
-      FETCH_DESCRIPTION_FROM_LINK: ${{ secrets.FETCH_DESCRIPTION_FROM_LINK }}
-      PROPOSAL_SCAN_LIMIT: ${{ secrets.PROPOSAL_SCAN_LIMIT }}
-      TEST_POST_LATEST_PROPOSAL_ONCE: ${{ secrets.TEST_POST_LATEST_PROPOSAL_ONCE }}
-      TEST_POST_LATEST_PROPOSAL_EACH_DAO: ${{ secrets.TEST_POST_LATEST_PROPOSAL_EACH_DAO }}
-      TEST_POST_LATEST_PROPOSAL_RESET: ${{ secrets.TEST_POST_LATEST_PROPOSAL_RESET }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -41,8 +24,69 @@ jobs:
           node-version: "20"
           cache: "npm"
 
+      - name: Validate Required Secrets
+        env:
+          DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
+          DISCORD_CHANNEL_ID: ${{ secrets.DISCORD_CHANNEL_ID }}
+          DAO_TARGETS: ${{ secrets.DAO_TARGETS }}
+          REALM_PUBKEY: ${{ secrets.REALM_PUBKEY }}
+          GOV_PROGRAM_NAMESPACE: ${{ secrets.GOV_PROGRAM_NAMESPACE }}
+          STATE_STORE: ${{ secrets.STATE_STORE }}
+          UPSTASH_REDIS_REST_URL: ${{ secrets.UPSTASH_REDIS_REST_URL }}
+          UPSTASH_REDIS_REST_TOKEN: ${{ secrets.UPSTASH_REDIS_REST_TOKEN }}
+        run: |
+          set -euo pipefail
+          missing=0
+
+          if [ -z "${DISCORD_BOT_TOKEN:-}" ]; then
+            echo "::error::Missing required secret: DISCORD_BOT_TOKEN"
+            missing=1
+          fi
+          if [ -z "${DISCORD_CHANNEL_ID:-}" ]; then
+            echo "::error::Missing required secret: DISCORD_CHANNEL_ID"
+            missing=1
+          fi
+
+          if [ -z "${DAO_TARGETS:-}" ] && { [ -z "${REALM_PUBKEY:-}" ] || [ -z "${GOV_PROGRAM_NAMESPACE:-}" ]; }; then
+            echo "::error::Set DAO_TARGETS, or set both REALM_PUBKEY and GOV_PROGRAM_NAMESPACE"
+            missing=1
+          fi
+
+          state_store="${STATE_STORE:-redis}"
+          if [ "$state_store" = "redis" ]; then
+            if [ -z "${UPSTASH_REDIS_REST_URL:-}" ] || [ -z "${UPSTASH_REDIS_REST_TOKEN:-}" ]; then
+              echo "::error::STATE_STORE=redis requires UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN"
+              missing=1
+            fi
+            if [ -n "${UPSTASH_REDIS_REST_URL:-}" ] && [[ ! "${UPSTASH_REDIS_REST_URL}" =~ ^https:// ]]; then
+              echo "::error::UPSTASH_REDIS_REST_URL must start with https:// (use Upstash REST URL, not redis:// or rediss://)"
+              missing=1
+            fi
+          fi
+
+          if [ "$missing" -ne 0 ]; then
+            exit 1
+          fi
+
       - name: Install Dependencies
         run: npm ci
 
       - name: Run Governance Cron
+        env:
+          DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
+          DISCORD_CHANNEL_ID: ${{ secrets.DISCORD_CHANNEL_ID }}
+          DAO_TARGETS: ${{ secrets.DAO_TARGETS }}
+          REALM_PUBKEY: ${{ secrets.REALM_PUBKEY }}
+          GOV_PROGRAM_NAMESPACE: ${{ secrets.GOV_PROGRAM_NAMESPACE }}
+          SHYFT_GRAPHQL_URL: ${{ secrets.SHYFT_GRAPHQL_URL }}
+          STATE_STORE: ${{ secrets.STATE_STORE }}
+          STATE_KEY: ${{ secrets.STATE_KEY }}
+          UPSTASH_REDIS_REST_URL: ${{ secrets.UPSTASH_REDIS_REST_URL }}
+          UPSTASH_REDIS_REST_TOKEN: ${{ secrets.UPSTASH_REDIS_REST_TOKEN }}
+          ANNOUNCE_EXISTING_ON_START: ${{ secrets.ANNOUNCE_EXISTING_ON_START }}
+          FETCH_DESCRIPTION_FROM_LINK: ${{ secrets.FETCH_DESCRIPTION_FROM_LINK }}
+          PROPOSAL_SCAN_LIMIT: ${{ secrets.PROPOSAL_SCAN_LIMIT }}
+          TEST_POST_LATEST_PROPOSAL_ONCE: ${{ secrets.TEST_POST_LATEST_PROPOSAL_ONCE }}
+          TEST_POST_LATEST_PROPOSAL_EACH_DAO: ${{ secrets.TEST_POST_LATEST_PROPOSAL_EACH_DAO }}
+          TEST_POST_LATEST_PROPOSAL_RESET: ${{ secrets.TEST_POST_LATEST_PROPOSAL_RESET }}
         run: npm run start
