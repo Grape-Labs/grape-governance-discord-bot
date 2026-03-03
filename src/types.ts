@@ -3,6 +3,8 @@ export type ProposalRecord = {
   governance: string;
   name: string;
   descriptionLink: string | null;
+  tokenOwnerRecord: string | null;
+  authorWallet: string | null;
   state: string | number | null;
   draftAt: number;
   votingAt: number | null;

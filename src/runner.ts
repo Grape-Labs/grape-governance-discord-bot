@@ -52,6 +52,12 @@ function formatProposalAction(state: unknown): string {
   return "Action: Please review this proposal.";
 }
 
+function formatProposalAuthor(proposal: ProposalRecord): string | null {
+  if (proposal.authorWallet) return `Author: ${proposal.authorWallet}`;
+  if (proposal.tokenOwnerRecord) return `Author: ${proposal.tokenOwnerRecord}`;
+  return null;
+}
+
 function ellipsize(value: string, maxLen: number): string {
   if (value.length <= maxLen) return value;
   return `${value.slice(0, maxLen - 3)}...`;
@@ -178,6 +184,7 @@ async function buildCreatedMessage(params: {
     "New Proposal Created",
     `DAO: ${params.daoLabel}`,
     `Title: ${params.proposal.name}`,
+    formatProposalAuthor(params.proposal),
     `Status: ${formatProposalStatus(params.proposal.state)}`,
     formatProposalAction(params.proposal.state),
     draftedAt ? `Drafted At: ${draftedAt}` : null,
@@ -201,6 +208,7 @@ async function buildVotingMessage(params: {
     "PROPOSAL NOW VOTING",
     `DAO: ${params.daoLabel}`,
     `Title: ${params.proposal.name}`,
+    formatProposalAuthor(params.proposal),
     `Status: ${formatProposalStatus(params.proposal.state)}`,
     formatProposalAction(params.proposal.state),
     draftedAt ? `Drafted At: ${draftedAt}` : null,
@@ -224,6 +232,7 @@ async function buildExecutedMessage(params: {
     "PROPOSAL EXECUTION STARTED",
     `DAO: ${params.daoLabel}`,
     `Title: ${params.proposal.name}`,
+    formatProposalAuthor(params.proposal),
     `Status: ${formatProposalStatus(params.proposal.state)}`,
     "Action: Proposal execution is now in progress.",
     draftedAt ? `Drafted At: ${draftedAt}` : null,
@@ -247,6 +256,7 @@ async function buildCompletedMessage(params: {
     "PROPOSAL COMPLETED",
     `DAO: ${params.daoLabel}`,
     `Title: ${params.proposal.name}`,
+    formatProposalAuthor(params.proposal),
     `Status: ${formatProposalStatus(params.proposal.state)}`,
     "Action: Proposal lifecycle is complete.",
     draftedAt ? `Drafted At: ${draftedAt}` : null,
@@ -270,6 +280,7 @@ async function buildCancelledMessage(params: {
     "PROPOSAL CANCELLED",
     `DAO: ${params.daoLabel}`,
     `Title: ${params.proposal.name}`,
+    formatProposalAuthor(params.proposal),
     `Status: ${formatProposalStatus(params.proposal.state)}`,
     "Action: Proposal is cancelled. No vote/action is needed.",
     draftedAt ? `Drafted At: ${draftedAt}` : null,
@@ -293,6 +304,7 @@ async function buildLatestProposalTestMessage(params: {
     "Smoke Test: Latest Proposal",
     `DAO: ${params.daoLabel}`,
     `Title: ${params.proposal.name}`,
+    formatProposalAuthor(params.proposal),
     `Status: ${formatProposalStatus(params.proposal.state)}`,
     formatProposalAction(params.proposal.state),
     draftedAt ? `Drafted At: ${draftedAt}` : null,

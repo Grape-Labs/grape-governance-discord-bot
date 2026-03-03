@@ -9,6 +9,15 @@ function toNum(value: unknown): number {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+function chunk<T>(values: T[], size: number): T[][] {
+  if (size <= 0) return [values];
+  const chunks: T[][] = [];
+  for (let i = 0; i < values.length; i += size) {
+    chunks.push(values.slice(i, i + size));
+  }
+  return chunks;
+}
+
 async function fetchGraphql(url: string, query: string): Promise<Record<string, unknown>> {
   const res = await fetch(url, {
     method: "POST",
@@ -76,12 +85,15 @@ function normalizeProposalRows(rows: unknown[]): ProposalRecord[] {
     const pubkey = String(row.pubkey || "");
     const governance = String(row.governance || "");
     if (!pubkey || !governance) continue;
+    const tokenOwnerRecord = row.tokenOwnerRecord ? String(row.tokenOwnerRecord) : null;
 
     parsed.push({
       pubkey,
       governance,
       name: String(row.name || "Untitled Proposal"),
       descriptionLink: row.descriptionLink ? String(row.descriptionLink) : null,
+      tokenOwnerRecord,
+      authorWallet: null,
       state: (row.state as string | number | null) ?? null,
       draftAt: toNum(row.draftAt),
       votingAt: row.votingAt != null ? toNum(row.votingAt) : null,
@@ -90,6 +102,57 @@ function normalizeProposalRows(rows: unknown[]): ProposalRecord[] {
   }
 
   return parsed;
+}
+
+async function fetchTokenOwnerWalletMap(params: {
+  shyftUrl: string;
+  programNamespace: string;
+  tokenOwnerRecordPubkeys: string[];
+}): Promise<Map<string, string>> {
+  const unique = Array.from(new Set(params.tokenOwnerRecordPubkeys.filter(Boolean)));
+  if (!unique.length) return new Map();
+
+  const result = new Map<string, string>();
+  const batches = chunk(unique, 200);
+
+  for (const batch of batches) {
+    const gqlList = batch.map((pubkey) => `"${escapeGqlString(pubkey)}"`).join(", ");
+    const query = `
+      query TokenOwnerRecords {
+        ${params.programNamespace}_TokenOwnerRecordV2(where: { pubkey: { _in: [${gqlList}] } }) {
+          pubkey
+          governingTokenOwner
+        }
+        ${params.programNamespace}_TokenOwnerRecordV1(where: { pubkey: { _in: [${gqlList}] } }) {
+          pubkey
+          governingTokenOwner
+        }
+      }
+    `;
+
+    try {
+      const data = await fetchGraphql(params.shyftUrl, query);
+      const rows = [
+        ...(((data[`${params.programNamespace}_TokenOwnerRecordV2`] as Array<Record<string, unknown>>) || [])),
+        ...(((data[`${params.programNamespace}_TokenOwnerRecordV1`] as Array<Record<string, unknown>>) || []))
+      ];
+
+      for (const row of rows) {
+        const pubkey = row?.pubkey ? String(row.pubkey) : "";
+        const owner = row?.governingTokenOwner ? String(row.governingTokenOwner) : "";
+        if (pubkey && owner && !result.has(pubkey)) {
+          result.set(pubkey, owner);
+        }
+      }
+    } catch (error) {
+      console.error(
+        `[shyft] token owner lookup failed for program=${params.programNamespace} batchSize=${batch.length}:`,
+        error
+      );
+    }
+  }
+
+  return result;
 }
 
 export async function fetchRealmProposals(params: {
@@ -122,6 +185,7 @@ export async function fetchRealmProposals(params: {
         governance
         name
         descriptionLink
+        tokenOwnerRecord
         state
         draftAt
         votingAt
@@ -136,6 +200,7 @@ export async function fetchRealmProposals(params: {
         governance
         name
         descriptionLink
+        tokenOwnerRecord
         state
         draftAt
         votingAt
@@ -147,9 +212,18 @@ export async function fetchRealmProposals(params: {
   const v2Rows = (data[`${params.programNamespace}_ProposalV2`] as unknown[]) || [];
   const v1Rows = (data[`${params.programNamespace}_ProposalV1`] as unknown[]) || [];
   const normalized = [...normalizeProposalRows(v2Rows), ...normalizeProposalRows(v1Rows)];
+  const tokenOwnerWalletMap = await fetchTokenOwnerWalletMap({
+    shyftUrl: params.shyftUrl,
+    programNamespace: params.programNamespace,
+    tokenOwnerRecordPubkeys: normalized.map((proposal) => proposal.tokenOwnerRecord || "")
+  });
+  const normalizedWithAuthors = normalized.map((proposal) => ({
+    ...proposal,
+    authorWallet: proposal.tokenOwnerRecord ? tokenOwnerWalletMap.get(proposal.tokenOwnerRecord) || null : null
+  }));
 
   const deduped = new Map<string, ProposalRecord>();
-  for (const proposal of normalized) {
+  for (const proposal of normalizedWithAuthors) {
     if (!deduped.has(proposal.pubkey)) {
       deduped.set(proposal.pubkey, proposal);
       continue;
