@@ -94,6 +94,7 @@ function normalizeProposalRows(rows: unknown[]): ProposalRecord[] {
       descriptionLink: row.descriptionLink ? String(row.descriptionLink) : null,
       tokenOwnerRecord,
       authorWallet: null,
+      instructionsCount: null,
       state: (row.state as string | number | null) ?? null,
       draftAt: toNum(row.draftAt),
       votingAt: row.votingAt != null ? toNum(row.votingAt) : null,
@@ -102,6 +103,53 @@ function normalizeProposalRows(rows: unknown[]): ProposalRecord[] {
   }
 
   return parsed;
+}
+
+async function fetchProposalInstructionCountMap(params: {
+  shyftUrl: string;
+  programNamespace: string;
+  proposalPubkeys: string[];
+}): Promise<Map<string, number>> {
+  const unique = Array.from(new Set(params.proposalPubkeys.filter(Boolean)));
+  if (!unique.length) return new Map();
+
+  const result = new Map<string, number>();
+  const batches = chunk(unique, 200);
+
+  for (const batch of batches) {
+    const gqlList = batch.map((pubkey) => `"${escapeGqlString(pubkey)}"`).join(", ");
+    const query = `
+      query ProposalTransactions {
+        ${params.programNamespace}_ProposalTransactionV2(where: { proposal: { _in: [${gqlList}] } }) {
+          proposal
+        }
+        ${params.programNamespace}_ProposalTransactionV1(where: { proposal: { _in: [${gqlList}] } }) {
+          proposal
+        }
+      }
+    `;
+
+    try {
+      const data = await fetchGraphql(params.shyftUrl, query);
+      const rows = [
+        ...(((data[`${params.programNamespace}_ProposalTransactionV2`] as Array<Record<string, unknown>>) || [])),
+        ...(((data[`${params.programNamespace}_ProposalTransactionV1`] as Array<Record<string, unknown>>) || []))
+      ];
+
+      for (const row of rows) {
+        const proposal = row?.proposal ? String(row.proposal) : "";
+        if (!proposal) continue;
+        result.set(proposal, (result.get(proposal) || 0) + 1);
+      }
+    } catch (error) {
+      console.error(
+        `[shyft] proposal transaction lookup failed for program=${params.programNamespace} batchSize=${batch.length}:`,
+        error
+      );
+    }
+  }
+
+  return result;
 }
 
 async function fetchTokenOwnerWalletMap(params: {
@@ -217,9 +265,15 @@ export async function fetchRealmProposals(params: {
     programNamespace: params.programNamespace,
     tokenOwnerRecordPubkeys: normalized.map((proposal) => proposal.tokenOwnerRecord || "")
   });
+  const proposalInstructionCountMap = await fetchProposalInstructionCountMap({
+    shyftUrl: params.shyftUrl,
+    programNamespace: params.programNamespace,
+    proposalPubkeys: normalized.map((proposal) => proposal.pubkey)
+  });
   const normalizedWithAuthors = normalized.map((proposal) => ({
     ...proposal,
-    authorWallet: proposal.tokenOwnerRecord ? tokenOwnerWalletMap.get(proposal.tokenOwnerRecord) || null : null
+    authorWallet: proposal.tokenOwnerRecord ? tokenOwnerWalletMap.get(proposal.tokenOwnerRecord) || null : null,
+    instructionsCount: proposalInstructionCountMap.get(proposal.pubkey) ?? 0
   }));
 
   const deduped = new Map<string, ProposalRecord>();

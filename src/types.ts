@@ -5,6 +5,7 @@ export type ProposalRecord = {
   descriptionLink: string | null;
   tokenOwnerRecord: string | null;
   authorWallet: string | null;
+  instructionsCount: number | null;
   state: string | number | null;
   draftAt: number;
   votingAt: number | null;

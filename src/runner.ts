@@ -58,6 +58,18 @@ function formatProposalAuthor(proposal: ProposalRecord): string | null {
   return null;
 }
 
+function formatProposalVotingEnd(proposal: ProposalRecord): string | null {
+  if (proposal.votingAt == null || proposal.maxVotingTime == null) return null;
+  const endsAt = formatDiscordTimestamp(proposal.votingAt + proposal.maxVotingTime);
+  return endsAt ? `Ends At: ${endsAt}` : null;
+}
+
+function formatProposalInstructionCount(proposal: ProposalRecord): string | null {
+  const count = proposal.instructionsCount;
+  if (typeof count !== "number" || !Number.isFinite(count) || count <= 0) return null;
+  return `Instructions: ${count}`;
+}
+
 function ellipsize(value: string, maxLen: number): string {
   if (value.length <= maxLen) return value;
   return `${value.slice(0, maxLen - 3)}...`;
@@ -180,6 +192,8 @@ async function buildCreatedMessage(params: {
   const description = await getDescription(params.proposal, params.fetchDescriptionFromLink);
   const draftedAt = formatDiscordTimestamp(params.proposal.draftAt);
   const votingAt = formatDiscordTimestamp(params.proposal.votingAt);
+  const endsAt = formatProposalVotingEnd(params.proposal);
+  const instructions = formatProposalInstructionCount(params.proposal);
   const lines = [
     "New Proposal Created",
     `DAO: ${params.daoLabel}`,
@@ -189,6 +203,8 @@ async function buildCreatedMessage(params: {
     formatProposalAction(params.proposal.state),
     draftedAt ? `Drafted At: ${draftedAt}` : null,
     votingAt ? `Voting At: ${votingAt}` : null,
+    endsAt,
+    instructions,
     `Description: ${ellipsize(description, 1200)}`,
     `Proposal: ${proposalUrl(params.realmPubkey, params.proposal.pubkey)}`
   ].filter((line): line is string => Boolean(line));
@@ -204,6 +220,8 @@ async function buildVotingMessage(params: {
   const description = await getDescription(params.proposal, params.fetchDescriptionFromLink);
   const draftedAt = formatDiscordTimestamp(params.proposal.draftAt);
   const votingAt = formatDiscordTimestamp(params.proposal.votingAt);
+  const endsAt = formatProposalVotingEnd(params.proposal);
+  const instructions = formatProposalInstructionCount(params.proposal);
   const lines = [
     "PROPOSAL NOW VOTING",
     `DAO: ${params.daoLabel}`,
@@ -213,6 +231,8 @@ async function buildVotingMessage(params: {
     formatProposalAction(params.proposal.state),
     draftedAt ? `Drafted At: ${draftedAt}` : null,
     votingAt ? `Voting At: ${votingAt}` : null,
+    endsAt,
+    instructions,
     `Description: ${ellipsize(description, 1200)}`,
     `Proposal: ${proposalUrl(params.realmPubkey, params.proposal.pubkey)}`
   ].filter((line): line is string => Boolean(line));
@@ -228,6 +248,8 @@ async function buildExecutedMessage(params: {
   const description = await getDescription(params.proposal, params.fetchDescriptionFromLink);
   const draftedAt = formatDiscordTimestamp(params.proposal.draftAt);
   const votingAt = formatDiscordTimestamp(params.proposal.votingAt);
+  const endsAt = formatProposalVotingEnd(params.proposal);
+  const instructions = formatProposalInstructionCount(params.proposal);
   const lines = [
     "PROPOSAL EXECUTION STARTED",
     `DAO: ${params.daoLabel}`,
@@ -237,6 +259,8 @@ async function buildExecutedMessage(params: {
     "Action: Proposal execution is now in progress.",
     draftedAt ? `Drafted At: ${draftedAt}` : null,
     votingAt ? `Voting At: ${votingAt}` : null,
+    endsAt,
+    instructions,
     `Description: ${ellipsize(description, 1200)}`,
     `Proposal: ${proposalUrl(params.realmPubkey, params.proposal.pubkey)}`
   ].filter((line): line is string => Boolean(line));
@@ -252,6 +276,8 @@ async function buildCompletedMessage(params: {
   const description = await getDescription(params.proposal, params.fetchDescriptionFromLink);
   const draftedAt = formatDiscordTimestamp(params.proposal.draftAt);
   const votingAt = formatDiscordTimestamp(params.proposal.votingAt);
+  const endsAt = formatProposalVotingEnd(params.proposal);
+  const instructions = formatProposalInstructionCount(params.proposal);
   const lines = [
     "PROPOSAL COMPLETED",
     `DAO: ${params.daoLabel}`,
@@ -261,6 +287,8 @@ async function buildCompletedMessage(params: {
     "Action: Proposal lifecycle is complete.",
     draftedAt ? `Drafted At: ${draftedAt}` : null,
     votingAt ? `Voting At: ${votingAt}` : null,
+    endsAt,
+    instructions,
     `Description: ${ellipsize(description, 1200)}`,
     `Proposal: ${proposalUrl(params.realmPubkey, params.proposal.pubkey)}`
   ].filter((line): line is string => Boolean(line));
@@ -276,6 +304,8 @@ async function buildCancelledMessage(params: {
   const description = await getDescription(params.proposal, params.fetchDescriptionFromLink);
   const draftedAt = formatDiscordTimestamp(params.proposal.draftAt);
   const votingAt = formatDiscordTimestamp(params.proposal.votingAt);
+  const endsAt = formatProposalVotingEnd(params.proposal);
+  const instructions = formatProposalInstructionCount(params.proposal);
   const lines = [
     "PROPOSAL CANCELLED",
     `DAO: ${params.daoLabel}`,
@@ -285,6 +315,8 @@ async function buildCancelledMessage(params: {
     "Action: Proposal is cancelled. No vote/action is needed.",
     draftedAt ? `Drafted At: ${draftedAt}` : null,
     votingAt ? `Voting At: ${votingAt}` : null,
+    endsAt,
+    instructions,
     `Description: ${ellipsize(description, 1200)}`,
     `Proposal: ${proposalUrl(params.realmPubkey, params.proposal.pubkey)}`
   ].filter((line): line is string => Boolean(line));
@@ -300,6 +332,8 @@ async function buildLatestProposalTestMessage(params: {
   const description = await getDescription(params.proposal, params.fetchDescriptionFromLink);
   const draftedAt = formatDiscordTimestamp(params.proposal.draftAt);
   const votingAt = formatDiscordTimestamp(params.proposal.votingAt);
+  const endsAt = formatProposalVotingEnd(params.proposal);
+  const instructions = formatProposalInstructionCount(params.proposal);
   const lines = [
     "Smoke Test: Latest Proposal",
     `DAO: ${params.daoLabel}`,
@@ -309,6 +343,8 @@ async function buildLatestProposalTestMessage(params: {
     formatProposalAction(params.proposal.state),
     draftedAt ? `Drafted At: ${draftedAt}` : null,
     votingAt ? `Voting At: ${votingAt}` : null,
+    endsAt,
+    instructions,
     `Description: ${ellipsize(description, 1200)}`,
     `Proposal: ${proposalUrl(params.realmPubkey, params.proposal.pubkey)}`
   ].filter((line): line is string => Boolean(line));
