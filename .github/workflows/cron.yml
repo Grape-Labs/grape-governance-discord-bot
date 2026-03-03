@@ -1,0 +1,48 @@
+name: Governance Cron
+
+on:
+  schedule:
+    - cron: "0 * * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: governance-cron
+  cancel-in-progress: false
+
+jobs:
+  run-cron:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
+      DISCORD_CHANNEL_ID: ${{ secrets.DISCORD_CHANNEL_ID }}
+      DAO_TARGETS: ${{ secrets.DAO_TARGETS }}
+      REALM_PUBKEY: ${{ secrets.REALM_PUBKEY }}
+      GOV_PROGRAM_NAMESPACE: ${{ secrets.GOV_PROGRAM_NAMESPACE }}
+      SHYFT_GRAPHQL_URL: ${{ secrets.SHYFT_GRAPHQL_URL }}
+      STATE_STORE: ${{ secrets.STATE_STORE }}
+      STATE_KEY: ${{ secrets.STATE_KEY }}
+      UPSTASH_REDIS_REST_URL: ${{ secrets.UPSTASH_REDIS_REST_URL }}
+      UPSTASH_REDIS_REST_TOKEN: ${{ secrets.UPSTASH_REDIS_REST_TOKEN }}
+      ANNOUNCE_EXISTING_ON_START: ${{ secrets.ANNOUNCE_EXISTING_ON_START }}
+      FETCH_DESCRIPTION_FROM_LINK: ${{ secrets.FETCH_DESCRIPTION_FROM_LINK }}
+      PROPOSAL_SCAN_LIMIT: ${{ secrets.PROPOSAL_SCAN_LIMIT }}
+      TEST_POST_LATEST_PROPOSAL_ONCE: ${{ secrets.TEST_POST_LATEST_PROPOSAL_ONCE }}
+      TEST_POST_LATEST_PROPOSAL_EACH_DAO: ${{ secrets.TEST_POST_LATEST_PROPOSAL_EACH_DAO }}
+      TEST_POST_LATEST_PROPOSAL_RESET: ${{ secrets.TEST_POST_LATEST_PROPOSAL_RESET }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Run Governance Cron
+        run: npm run start

@@ -1,4 +1,4 @@
-# Grape Governance Notifier (Vercel Cron)
+# Grape Governance Notifier (GitHub Actions Cron)
 
 Serverless Discord notifier for SPL Governance proposals using Shyft GraphQL.
 
@@ -11,6 +11,7 @@ Supports one or many DAO realms in the same channel.
 ## Architecture
 
 - `api/cron.ts`: Vercel cron HTTP function
+- `.github/workflows/cron.yml`: GitHub Actions scheduled runner
 - `src/runner.ts`: proposal fetch + state transition logic
 - State persistence:
   - `redis` (recommended on Vercel, persistent)
@@ -20,7 +21,6 @@ Supports one or many DAO realms in the same channel.
 
 - `DISCORD_BOT_TOKEN`
 - `DISCORD_CHANNEL_ID`
-- `CRON_SECRET`
 
 For persistent state via Upstash Redis:
 - `UPSTASH_REDIS_REST_URL`
@@ -51,24 +51,24 @@ npm run dev
 
 `npm run dev` runs one cron cycle locally (no Discord gateway process).
 
-## Vercel Deploy
+## GitHub Actions Cron (Recommended)
 
-1. Push repo to GitHub/GitLab/Bitbucket.
-2. Import into Vercel.
-3. Add env vars from `.env.example` in Vercel Project Settings.
-4. Create and attach an Upstash Redis integration in Vercel (recommended), then set:
-   - `STATE_STORE=redis`
+1. Push this repo to GitHub.
+2. In GitHub, open `Settings -> Secrets and variables -> Actions`.
+3. Add secrets (same names as `.env.example`), at minimum:
+   - `DISCORD_BOT_TOKEN`
+   - `DISCORD_CHANNEL_ID`
+   - `DAO_TARGETS` (or `REALM_PUBKEY` + `GOV_PROGRAM_NAMESPACE`)
    - `UPSTASH_REDIS_REST_URL`
    - `UPSTASH_REDIS_REST_TOKEN`
-5. Deploy.
+4. Workflow is at [.github/workflows/cron.yml](/Users/kirk/Development/grape-governance-discord-bot/.github/workflows/cron.yml):
+   - Scheduled hourly: `0 * * * *`
+   - Manual run: `workflow_dispatch`
 
-Cron schedule is in [vercel.json](/Users/kirk/Development/grape-governance-discord-bot/vercel.json) and is set to once per day (Hobby-compatible):
+## Optional Vercel Deploy
 
-```json
-{
-  "crons": [{ "path": "/api/cron", "schedule": "0 0 * * *" }]
-}
-```
+Vercel cron is disabled in [vercel.json](/Users/kirk/Development/grape-governance-discord-bot/vercel.json) to avoid duplicate notifications when GitHub Actions is enabled.
+You can still deploy `api/cron` as a manual/protected HTTP endpoint (requires `CRON_SECRET`).
 
 ## Troubleshooting
 
