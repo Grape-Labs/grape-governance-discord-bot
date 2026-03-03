@@ -383,7 +383,11 @@ async function sendDiscordMessage(params: {
   content: string;
 }): Promise<void> {
   const endpoint = `https://discord.com/api/v10/channels/${encodeURIComponent(params.channelId)}/messages`;
-  const payload = JSON.stringify({ content: params.content });
+  const payload = JSON.stringify({
+    content: params.content,
+    // SUPPRESS_EMBEDS prevents Discord from unfurling link previews.
+    flags: 4
+  });
   const headers = {
     "content-type": "application/json",
     authorization: `Bot ${params.token}`
