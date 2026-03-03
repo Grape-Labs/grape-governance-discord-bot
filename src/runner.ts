@@ -79,6 +79,11 @@ function ellipsize(value: string, maxLen: number): string {
   return `${value.slice(0, maxLen - 3)}...`;
 }
 
+function renderMessage(title: string, lines: Array<string | null>): string {
+  const rendered = [`**${title}**`, ...lines.filter((line): line is string => Boolean(line)).map((line) => `- ${line}`)];
+  return ellipsize(rendered.join("\n"), 1900);
+}
+
 function proposalStateKey(target: DaoTarget, proposal: ProposalRecord): string {
   return `${target.realmPubkey}:${proposal.pubkey}`;
 }
@@ -198,8 +203,7 @@ async function buildCreatedMessage(params: {
   const votingAt = formatDiscordTimestamp(params.proposal.votingAt);
   const endsAt = formatProposalVotingEnd(params.proposal);
   const instructions = formatProposalInstructionCount(params.proposal);
-  const lines = [
-    "New Proposal Created",
+  return renderMessage("NEW PROPOSAL CREATED", [
     `DAO: ${params.daoLabel}`,
     `Title: ${params.proposal.name}`,
     formatProposalAuthor(params.proposal),
@@ -211,8 +215,7 @@ async function buildCreatedMessage(params: {
     instructions,
     `Description: ${ellipsize(description, 1200)}`,
     `Proposal: ${proposalUrl(params.realmPubkey, params.proposal.pubkey)}`
-  ].filter((line): line is string => Boolean(line));
-  return ellipsize(lines.join("\n"), 1900);
+  ]);
 }
 
 async function buildVotingMessage(params: {
@@ -226,8 +229,7 @@ async function buildVotingMessage(params: {
   const votingAt = formatDiscordTimestamp(params.proposal.votingAt);
   const endsAt = formatProposalVotingEnd(params.proposal);
   const instructions = formatProposalInstructionCount(params.proposal);
-  const lines = [
-    "PROPOSAL NOW VOTING",
+  return renderMessage("PROPOSAL NOW VOTING", [
     `DAO: ${params.daoLabel}`,
     `Title: ${params.proposal.name}`,
     formatProposalAuthor(params.proposal),
@@ -239,8 +241,7 @@ async function buildVotingMessage(params: {
     instructions,
     `Description: ${ellipsize(description, 1200)}`,
     `Proposal: ${proposalUrl(params.realmPubkey, params.proposal.pubkey)}`
-  ].filter((line): line is string => Boolean(line));
-  return ellipsize(lines.join("\n"), 1900);
+  ]);
 }
 
 async function buildExecutedMessage(params: {
@@ -254,8 +255,7 @@ async function buildExecutedMessage(params: {
   const votingAt = formatDiscordTimestamp(params.proposal.votingAt);
   const endsAt = formatProposalVotingEnd(params.proposal);
   const instructions = formatProposalInstructionCount(params.proposal);
-  const lines = [
-    "PROPOSAL EXECUTION STARTED",
+  return renderMessage("PROPOSAL EXECUTION STARTED", [
     `DAO: ${params.daoLabel}`,
     `Title: ${params.proposal.name}`,
     formatProposalAuthor(params.proposal),
@@ -267,8 +267,7 @@ async function buildExecutedMessage(params: {
     instructions,
     `Description: ${ellipsize(description, 1200)}`,
     `Proposal: ${proposalUrl(params.realmPubkey, params.proposal.pubkey)}`
-  ].filter((line): line is string => Boolean(line));
-  return ellipsize(lines.join("\n"), 1900);
+  ]);
 }
 
 async function buildCompletedMessage(params: {
@@ -282,8 +281,7 @@ async function buildCompletedMessage(params: {
   const votingAt = formatDiscordTimestamp(params.proposal.votingAt);
   const endsAt = formatProposalVotingEnd(params.proposal);
   const instructions = formatProposalInstructionCount(params.proposal);
-  const lines = [
-    "PROPOSAL COMPLETED",
+  return renderMessage("PROPOSAL COMPLETED", [
     `DAO: ${params.daoLabel}`,
     `Title: ${params.proposal.name}`,
     formatProposalAuthor(params.proposal),
@@ -295,8 +293,7 @@ async function buildCompletedMessage(params: {
     instructions,
     `Description: ${ellipsize(description, 1200)}`,
     `Proposal: ${proposalUrl(params.realmPubkey, params.proposal.pubkey)}`
-  ].filter((line): line is string => Boolean(line));
-  return ellipsize(lines.join("\n"), 1900);
+  ]);
 }
 
 async function buildCancelledMessage(params: {
@@ -310,8 +307,7 @@ async function buildCancelledMessage(params: {
   const votingAt = formatDiscordTimestamp(params.proposal.votingAt);
   const endsAt = formatProposalVotingEnd(params.proposal);
   const instructions = formatProposalInstructionCount(params.proposal);
-  const lines = [
-    "PROPOSAL CANCELLED",
+  return renderMessage("PROPOSAL CANCELLED", [
     `DAO: ${params.daoLabel}`,
     `Title: ${params.proposal.name}`,
     formatProposalAuthor(params.proposal),
@@ -323,8 +319,7 @@ async function buildCancelledMessage(params: {
     instructions,
     `Description: ${ellipsize(description, 1200)}`,
     `Proposal: ${proposalUrl(params.realmPubkey, params.proposal.pubkey)}`
-  ].filter((line): line is string => Boolean(line));
-  return ellipsize(lines.join("\n"), 1900);
+  ]);
 }
 
 async function buildLatestProposalTestMessage(params: {
@@ -338,8 +333,7 @@ async function buildLatestProposalTestMessage(params: {
   const votingAt = formatDiscordTimestamp(params.proposal.votingAt);
   const endsAt = formatProposalVotingEnd(params.proposal);
   const instructions = formatProposalInstructionCount(params.proposal);
-  const lines = [
-    "Smoke Test: Latest Proposal",
+  return renderMessage("SMOKE TEST: LATEST PROPOSAL", [
     `DAO: ${params.daoLabel}`,
     `Title: ${params.proposal.name}`,
     formatProposalAuthor(params.proposal),
@@ -351,8 +345,7 @@ async function buildLatestProposalTestMessage(params: {
     instructions,
     `Description: ${ellipsize(description, 1200)}`,
     `Proposal: ${proposalUrl(params.realmPubkey, params.proposal.pubkey)}`
-  ].filter((line): line is string => Boolean(line));
-  return ellipsize(lines.join("\n"), 1900);
+  ]);
 }
 
 async function sendDiscordMessage(params: {
