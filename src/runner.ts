@@ -14,8 +14,29 @@ function isVotingState(state: unknown): boolean {
   return toNum(state) === 2;
 }
 
+function isExecutedState(state: unknown): boolean {
+  const normalized = String(state ?? "").trim().toUpperCase();
+  if (normalized === "EXECUTING" || normalized === "EXECUTED") return true;
+  return toNum(state) === 4;
+}
+
+function isCompletedState(state: unknown): boolean {
+  const normalized = String(state ?? "").trim().toUpperCase();
+  if (normalized === "COMPLETED") return true;
+  return toNum(state) === 5;
+}
+
+function isCancelledState(state: unknown): boolean {
+  const normalized = String(state ?? "").trim().toUpperCase();
+  if (normalized === "CANCELLED") return true;
+  return toNum(state) === 6;
+}
+
 function formatProposalStatus(state: unknown): string {
   const normalized = String(state ?? "").trim().toUpperCase();
+  if (isCancelledState(state)) return "Cancelled";
+  if (isCompletedState(state)) return "Completed";
+  if (isExecutedState(state)) return "Executed";
   if (isVotingState(state)) return "Now Voting";
   if (normalized === "DRAFT" || toNum(state) === 0) return "Draft (To Be Reviewed)";
   if (!normalized) return "Unknown";
@@ -190,6 +211,75 @@ async function buildVotingMessage(params: {
   return ellipsize(lines.join("\n"), 1900);
 }
 
+async function buildExecutedMessage(params: {
+  daoLabel: string;
+  proposal: ProposalRecord;
+  realmPubkey: string;
+  fetchDescriptionFromLink: boolean;
+}): Promise<string> {
+  const description = await getDescription(params.proposal, params.fetchDescriptionFromLink);
+  const draftedAt = formatDiscordTimestamp(params.proposal.draftAt);
+  const votingAt = formatDiscordTimestamp(params.proposal.votingAt);
+  const lines = [
+    "PROPOSAL EXECUTION STARTED",
+    `DAO: ${params.daoLabel}`,
+    `Title: ${params.proposal.name}`,
+    `Status: ${formatProposalStatus(params.proposal.state)}`,
+    "Action: Proposal execution is now in progress.",
+    draftedAt ? `Drafted At: ${draftedAt}` : null,
+    votingAt ? `Voting At: ${votingAt}` : null,
+    `Description: ${ellipsize(description, 1200)}`,
+    `Proposal: ${proposalUrl(params.realmPubkey, params.proposal.pubkey)}`
+  ].filter((line): line is string => Boolean(line));
+  return ellipsize(lines.join("\n"), 1900);
+}
+
+async function buildCompletedMessage(params: {
+  daoLabel: string;
+  proposal: ProposalRecord;
+  realmPubkey: string;
+  fetchDescriptionFromLink: boolean;
+}): Promise<string> {
+  const description = await getDescription(params.proposal, params.fetchDescriptionFromLink);
+  const draftedAt = formatDiscordTimestamp(params.proposal.draftAt);
+  const votingAt = formatDiscordTimestamp(params.proposal.votingAt);
+  const lines = [
+    "PROPOSAL COMPLETED",
+    `DAO: ${params.daoLabel}`,
+    `Title: ${params.proposal.name}`,
+    `Status: ${formatProposalStatus(params.proposal.state)}`,
+    "Action: Proposal lifecycle is complete.",
+    draftedAt ? `Drafted At: ${draftedAt}` : null,
+    votingAt ? `Voting At: ${votingAt}` : null,
+    `Description: ${ellipsize(description, 1200)}`,
+    `Proposal: ${proposalUrl(params.realmPubkey, params.proposal.pubkey)}`
+  ].filter((line): line is string => Boolean(line));
+  return ellipsize(lines.join("\n"), 1900);
+}
+
+async function buildCancelledMessage(params: {
+  daoLabel: string;
+  proposal: ProposalRecord;
+  realmPubkey: string;
+  fetchDescriptionFromLink: boolean;
+}): Promise<string> {
+  const description = await getDescription(params.proposal, params.fetchDescriptionFromLink);
+  const draftedAt = formatDiscordTimestamp(params.proposal.draftAt);
+  const votingAt = formatDiscordTimestamp(params.proposal.votingAt);
+  const lines = [
+    "PROPOSAL CANCELLED",
+    `DAO: ${params.daoLabel}`,
+    `Title: ${params.proposal.name}`,
+    `Status: ${formatProposalStatus(params.proposal.state)}`,
+    "Action: Proposal is cancelled. No vote/action is needed.",
+    draftedAt ? `Drafted At: ${draftedAt}` : null,
+    votingAt ? `Voting At: ${votingAt}` : null,
+    `Description: ${ellipsize(description, 1200)}`,
+    `Proposal: ${proposalUrl(params.realmPubkey, params.proposal.pubkey)}`
+  ].filter((line): line is string => Boolean(line));
+  return ellipsize(lines.join("\n"), 1900);
+}
+
 async function buildLatestProposalTestMessage(params: {
   daoLabel: string;
   proposal: ProposalRecord;
@@ -266,6 +356,9 @@ export type RunStats = {
   tracked: number;
   createdPosted: number;
   votingPosted: number;
+  executedPosted: number;
+  completedPosted: number;
+  cancelledPosted: number;
   seededWithoutAlert: number;
   stateInitializedBeforeRun: boolean;
   fetchErrors: number;
@@ -304,6 +397,9 @@ export async function runCronOnce(config = getConfig()): Promise<RunStats> {
   let proposalsFetched = 0;
   let createdPosted = 0;
   let votingPosted = 0;
+  let executedPosted = 0;
+  let completedPosted = 0;
+  let cancelledPosted = 0;
   let seededWithoutAlert = 0;
   let fetchErrors = 0;
   let newTargetsSeeded = 0;
@@ -393,6 +489,9 @@ export async function runCronOnce(config = getConfig()): Promise<RunStats> {
       const key = proposalStateKey(target, proposal);
       const known = state.proposals[key];
       const nowVoting = isVotingState(proposal.state);
+      const nowExecuted = isExecutedState(proposal.state);
+      const nowCompleted = isCompletedState(proposal.state);
+      const nowCancelled = isCancelledState(proposal.state);
 
       if (!known) {
         const shouldAnnounceCreate = !state.initialized
@@ -429,6 +528,9 @@ export async function runCronOnce(config = getConfig()): Promise<RunStats> {
       }
 
       const wasVoting = isVotingState(known.lastState);
+      const wasExecuted = isExecutedState(known.lastState);
+      const wasCompleted = isCompletedState(known.lastState);
+      const wasCancelled = isCancelledState(known.lastState);
       if (!wasVoting && nowVoting) {
         const message = await buildVotingMessage({
           daoLabel: target.label,
@@ -447,6 +549,66 @@ export async function runCronOnce(config = getConfig()): Promise<RunStats> {
         } catch (error) {
           sendErrors += 1;
           console.error(`[cron] failed voting send for ${target.label} ${proposal.pubkey}:`, error);
+        }
+      }
+
+      if (!wasExecuted && nowExecuted) {
+        const message = await buildExecutedMessage({
+          daoLabel: target.label,
+          proposal,
+          realmPubkey: target.realmPubkey,
+          fetchDescriptionFromLink: config.fetchDescriptionFromLink
+        });
+        try {
+          await sendDiscordMessage({
+            token: config.discordToken,
+            channelId: config.discordChannelId,
+            content: message
+          });
+          executedPosted += 1;
+        } catch (error) {
+          sendErrors += 1;
+          console.error(`[cron] failed executed send for ${target.label} ${proposal.pubkey}:`, error);
+        }
+      }
+
+      if (!wasCompleted && nowCompleted) {
+        const message = await buildCompletedMessage({
+          daoLabel: target.label,
+          proposal,
+          realmPubkey: target.realmPubkey,
+          fetchDescriptionFromLink: config.fetchDescriptionFromLink
+        });
+        try {
+          await sendDiscordMessage({
+            token: config.discordToken,
+            channelId: config.discordChannelId,
+            content: message
+          });
+          completedPosted += 1;
+        } catch (error) {
+          sendErrors += 1;
+          console.error(`[cron] failed completed send for ${target.label} ${proposal.pubkey}:`, error);
+        }
+      }
+
+      if (!wasCancelled && nowCancelled) {
+        const message = await buildCancelledMessage({
+          daoLabel: target.label,
+          proposal,
+          realmPubkey: target.realmPubkey,
+          fetchDescriptionFromLink: config.fetchDescriptionFromLink
+        });
+        try {
+          await sendDiscordMessage({
+            token: config.discordToken,
+            channelId: config.discordChannelId,
+            content: message
+          });
+          cancelledPosted += 1;
+        } catch (error) {
+          sendErrors += 1;
+          console.error(`[cron] failed cancelled send for ${target.label} ${proposal.pubkey}:`, error);
         }
       }
 
@@ -470,6 +632,9 @@ export async function runCronOnce(config = getConfig()): Promise<RunStats> {
     tracked: Object.keys(state.proposals).length,
     createdPosted,
     votingPosted,
+    executedPosted,
+    completedPosted,
+    cancelledPosted,
     seededWithoutAlert,
     stateInitializedBeforeRun,
     fetchErrors,
