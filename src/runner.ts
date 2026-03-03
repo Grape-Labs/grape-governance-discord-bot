@@ -53,9 +53,43 @@ function formatProposalAction(state: unknown): string {
 }
 
 function formatProposalAuthor(proposal: ProposalRecord): string | null {
-  if (proposal.authorWallet) return `Author: ${proposal.authorWallet}`;
-  if (proposal.tokenOwnerRecord) return `Author: ${proposal.tokenOwnerRecord}`;
-  return null;
+  const raw = proposal.authorWallet || proposal.tokenOwnerRecord;
+  if (!raw) return null;
+  const short = raw.length > 16 ? `${raw.slice(0, 6)}...${raw.slice(-6)}` : raw;
+  return `Author: \`${short}\``;
+}
+
+function formatLabelLine(line: string): string {
+  const idx = line.indexOf(": ");
+  if (idx <= 0) return line;
+  const label = line.slice(0, idx);
+  const value = line.slice(idx + 2);
+  return `**${label}**: ${value}`;
+}
+
+function isLinkSectionLine(line: string): boolean {
+  return line.startsWith("Description: ") || line.startsWith("Proposal: ");
+}
+
+function renderMessage(title: string, lines: Array<string | null>): string {
+  const rawLines = lines.filter((line): line is string => Boolean(line));
+  const rendered: string[] = [`**${title}**`, ""];
+
+  let inLinkSection = false;
+  for (const line of rawLines) {
+    const linkSectionLine = isLinkSectionLine(line);
+    if (linkSectionLine && !inLinkSection) {
+      rendered.push("");
+      inLinkSection = true;
+    }
+    rendered.push(formatLabelLine(line));
+  }
+
+  while (rendered.length && rendered[rendered.length - 1] === "") {
+    rendered.pop();
+  }
+
+  return ellipsize(rendered.join("\n"), 1900);
 }
 
 function formatProposalVotingEnd(proposal: ProposalRecord): string | null {
@@ -77,11 +111,6 @@ function proposalRecencyKey(proposal: ProposalRecord): number {
 function ellipsize(value: string, maxLen: number): string {
   if (value.length <= maxLen) return value;
   return `${value.slice(0, maxLen - 3)}...`;
-}
-
-function renderMessage(title: string, lines: Array<string | null>): string {
-  const rendered = [`**${title}**`, ...lines.filter((line): line is string => Boolean(line)).map((line) => `- ${line}`)];
-  return ellipsize(rendered.join("\n"), 1900);
 }
 
 function proposalStateKey(target: DaoTarget, proposal: ProposalRecord): string {
