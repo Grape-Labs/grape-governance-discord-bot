@@ -3,9 +3,7 @@ import { runCronOnce } from "./runner.js";
 
 async function main(): Promise<void> {
   const stats = await runCronOnce();
-  console.log(
-    `[local-run] targets=${stats.targets} proposals=${stats.proposalsFetched} created=${stats.createdPosted} voting=${stats.votingPosted} tracked=${stats.tracked}`
-  );
+  console.log(`[local-run] ${JSON.stringify(stats)}`);
 }
 
 void main().catch((error) => {
