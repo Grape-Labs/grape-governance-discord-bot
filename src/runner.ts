@@ -450,6 +450,9 @@ export type RunStats = {
 };
 
 export async function runCronOnce(config = getConfig()): Promise<RunStats> {
+  console.log(
+    `[cron] config targets=${config.daoTargets.length} stateStore=${config.stateStore} testPostLatestProposalOnce=${config.testPostLatestProposalOnce} testPostLatestProposalEachDao=${config.testPostLatestProposalEachDao} testPostLatestVotingProposalOnce=${config.testPostLatestVotingProposalOnce} testPostLatestProposalReset=${config.testPostLatestProposalReset}`
+  );
   const stateStore = createStateStore(config);
   const state = await stateStore.load();
   const stateInitializedBeforeRun = state.initialized;
