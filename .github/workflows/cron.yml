@@ -16,12 +16,12 @@ jobs:
       contents: read
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
-          node-version: "20"
+          node-version: "24"
           cache: "npm"
 
       - name: Validate Required Secrets
@@ -55,13 +55,15 @@ jobs:
           state_store="${STATE_STORE:-redis}"
           if [ "$state_store" = "redis" ]; then
             if [ -z "${UPSTASH_REDIS_REST_URL:-}" ] || [ -z "${UPSTASH_REDIS_REST_TOKEN:-}" ]; then
-              echo "::error::STATE_STORE=redis requires UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN"
+              echo "::error::GitHub Actions runs default to STATE_STORE=redis. Set UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN, or set STATE_STORE=file only for one-off smoke tests."
               missing=1
             fi
             if [ -n "${UPSTASH_REDIS_REST_URL:-}" ] && [[ ! "${UPSTASH_REDIS_REST_URL}" =~ ^https:// ]]; then
               echo "::error::UPSTASH_REDIS_REST_URL must start with https:// (use Upstash REST URL, not redis:// or rediss://)"
               missing=1
             fi
+          elif [ "$state_store" = "file" ]; then
+            echo "::warning::STATE_STORE=file on GitHub Actions is ephemeral. Use it only for temporary smoke tests; proposal state will not persist across runs."
           fi
 
           if [ "$missing" -ne 0 ]; then

@@ -61,6 +61,7 @@ npm run dev
    - `DAO_TARGETS` (or `REALM_PUBKEY` + `GOV_PROGRAM_NAMESPACE`)
    - `UPSTASH_REDIS_REST_URL`
    - `UPSTASH_REDIS_REST_TOKEN`
+   - Optional for temporary testing only: `STATE_STORE=file`
 4. Workflow is at [.github/workflows/cron.yml](/Users/kirk/Development/grape-governance-discord-bot/.github/workflows/cron.yml):
    - Scheduled hourly: `0 * * * *`
    - Manual run: `workflow_dispatch`
@@ -73,6 +74,7 @@ You can still deploy `api/cron` as a manual/protected HTTP endpoint (requires `C
 ## Troubleshooting
 
 - If `STATE_STORE=redis`, you must set Redis credentials or the cron function will fail fast.
+- On GitHub Actions, the workflow defaults to `STATE_STORE=redis`. If you do not want Redis for a one-off test, set `STATE_STORE=file`, but state will not persist between runs.
 - `STATE_STORE=file` is local-only. On Vercel it is ephemeral and not reliable for proposal change detection.
 - Check Vercel function logs for the `stats` payload (`proposalsFetched`, `createdPosted`, `votingPosted`) after each cron run.
 - If `stateInitializedBeforeRun=false` and `seededWithoutAlert>0`, that run only seeded state (expected when `ANNOUNCE_EXISTING_ON_START=false`), so no Discord create messages are sent on that first run.
