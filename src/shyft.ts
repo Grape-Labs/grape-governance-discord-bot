@@ -1,5 +1,7 @@
 import type { ProposalRecord } from "./types.js";
 
+const warnedMissingGraphqlFields = new Set<string>();
+
 function escapeGqlString(value: string): string {
   return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
 }
@@ -43,6 +45,49 @@ async function fetchGraphql(url: string, query: string): Promise<Record<string, 
   }
 
   return json.data ?? {};
+}
+
+function errorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  return String(error);
+}
+
+function isMissingGraphqlFieldError(error: unknown, fieldName: string): boolean {
+  return errorMessage(error).includes(`field '${fieldName}' not found`);
+}
+
+function warnMissingGraphqlFieldOnce(programNamespace: string, fieldName: string): void {
+  const key = `${programNamespace}:${fieldName}`;
+  if (warnedMissingGraphqlFields.has(key)) return;
+  warnedMissingGraphqlFields.add(key);
+  console.warn(`[shyft] skipping unsupported GraphQL field ${fieldName} for program=${programNamespace}`);
+}
+
+async function fetchOptionalGraphqlRows(params: {
+  shyftUrl: string;
+  programNamespace: string;
+  fieldName: string;
+  args: string;
+  selection: string;
+}): Promise<Array<Record<string, unknown>>> {
+  const query = `
+    query OptionalRows {
+      ${params.fieldName}(${params.args}) {
+        ${params.selection}
+      }
+    }
+  `;
+
+  try {
+    const data = await fetchGraphql(params.shyftUrl, query);
+    return ((data[params.fieldName] as Array<Record<string, unknown>>) || []);
+  } catch (error) {
+    if (isMissingGraphqlFieldError(error, params.fieldName)) {
+      warnMissingGraphqlFieldOnce(params.programNamespace, params.fieldName);
+      return [];
+    }
+    throw error;
+  }
 }
 
 export async function fetchGovernancePubkeysForRealm(
@@ -118,22 +163,23 @@ async function fetchProposalInstructionCountMap(params: {
 
   for (const batch of batches) {
     const gqlList = batch.map((pubkey) => `"${escapeGqlString(pubkey)}"`).join(", ");
-    const query = `
-      query ProposalTransactions {
-        ${params.programNamespace}_ProposalTransactionV2(where: { proposal: { _in: [${gqlList}] } }) {
-          proposal
-        }
-        ${params.programNamespace}_ProposalTransactionV1(where: { proposal: { _in: [${gqlList}] } }) {
-          proposal
-        }
-      }
-    `;
 
     try {
-      const data = await fetchGraphql(params.shyftUrl, query);
       const rows = [
-        ...(((data[`${params.programNamespace}_ProposalTransactionV2`] as Array<Record<string, unknown>>) || [])),
-        ...(((data[`${params.programNamespace}_ProposalTransactionV1`] as Array<Record<string, unknown>>) || []))
+        ...(await fetchOptionalGraphqlRows({
+          shyftUrl: params.shyftUrl,
+          programNamespace: params.programNamespace,
+          fieldName: `${params.programNamespace}_ProposalTransactionV2`,
+          args: `where: { proposal: { _in: [${gqlList}] } }`,
+          selection: "proposal"
+        })),
+        ...(await fetchOptionalGraphqlRows({
+          shyftUrl: params.shyftUrl,
+          programNamespace: params.programNamespace,
+          fieldName: `${params.programNamespace}_ProposalTransactionV1`,
+          args: `where: { proposal: { _in: [${gqlList}] } }`,
+          selection: "proposal"
+        }))
       ];
 
       for (const row of rows) {

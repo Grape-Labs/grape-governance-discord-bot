@@ -33,7 +33,7 @@ jobs:
           GOV_PROGRAM_NAMESPACE: ${{ secrets.GOV_PROGRAM_NAMESPACE }}
           STATE_STORE: ${{ secrets.STATE_STORE }}
           UPSTASH_REDIS_REST_URL: ${{ secrets.UPSTASH_REDIS_REST_URL }}
-          UPSTASH_REDIS_REST_TOKEN: ${{ secrets.UPSTASH_REDIS_REST_TOKEN }}
+          UPSTASH_REDIS_REST_TOKEN: ${{ secrets.UPSTASH_REDIS_REST_TOKEN }}I dont
         run: |
           set -euo pipefail
           missing=0
