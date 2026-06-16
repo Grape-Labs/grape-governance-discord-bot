@@ -299,6 +299,20 @@ function getMessageAction(variant: ProposalMessageVariant, proposal: ProposalRec
   }
 }
 
+function getPrimaryLinkLabel(variant: ProposalMessageVariant): string {
+  switch (variant) {
+    case "created":
+      return "Review Link";
+    case "voting":
+      return "Vote Link";
+    case "executed":
+    case "completed":
+    case "cancelled":
+    case "latest":
+      return "Proposal Link";
+  }
+}
+
 async function buildProposalMessage(params: {
   variant: ProposalMessageVariant;
   daoLabel: string;
@@ -315,16 +329,14 @@ async function buildProposalMessage(params: {
   const proposalLink = proposalUrl(params.realmPubkey, params.proposal.pubkey);
   const votingMention = params.variant === "voting" ? buildVotingMention(params.votingMention) : null;
   const action = getMessageAction(params.variant, params.proposal);
+  const primaryLinkLabel = getPrimaryLinkLabel(params.variant);
   const summaryLimit = params.variant === "voting" ? 500 : 900;
 
-  const leadSection =
-    params.variant === "voting"
-      ? [
-          action,
-          `Vote Link: ${proposalLink}`,
-          endsAt ? `Voting Ends: ${endsAt}` : null
-        ]
-      : [action];
+  const leadSection = [
+    action,
+    `${primaryLinkLabel}: ${proposalLink}`,
+    params.variant === "voting" && endsAt ? `Voting Ends: ${endsAt}` : null
+  ];
 
   const overviewSection = [
     `DAO: ${params.daoLabel}`,
@@ -341,10 +353,7 @@ async function buildProposalMessage(params: {
   ];
 
   const summarySection = summary ? [`Summary: ${ellipsize(summary, summaryLimit)}`] : [];
-  const linksSection = [
-    params.variant === "voting" ? null : `Proposal Link: ${proposalLink}`,
-    params.proposal.descriptionLink ? `Description Link: ${params.proposal.descriptionLink}` : null
-  ];
+  const linksSection = [params.proposal.descriptionLink ? `Description Link: ${params.proposal.descriptionLink}` : null];
 
   return {
     content: renderMessage({
