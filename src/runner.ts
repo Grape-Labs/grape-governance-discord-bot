@@ -14,6 +14,12 @@ type DiscordMention = {
   allowedMentions: DiscordAllowedMentions;
 };
 
+type DiscordEmbed = {
+  color: number;
+  description: string;
+  title: string;
+};
+
 type ProposalMessageVariant =
   | "created"
   | "voting"
@@ -91,16 +97,15 @@ function formatLabelLine(line: string): string {
   return `**${label}**: ${value}`;
 }
 
-function renderMessage(params: {
-  title: string;
+function renderMessageBody(params: {
   prefaceLines?: Array<string | null>;
   sections: MessageSection[];
 }): string {
-  const rendered: string[] = [`**${params.title}**`];
+  const rendered: string[] = [];
   const prefaceLines = (params.prefaceLines ?? []).filter((line): line is string => Boolean(line));
 
   if (prefaceLines.length) {
-    rendered.push("", ...prefaceLines);
+    rendered.push(...prefaceLines);
   }
 
   for (const section of params.sections) {
@@ -115,7 +120,7 @@ function renderMessage(params: {
     }
   }
 
-  return ellipsize(rendered.join("\n").trimEnd(), 1900);
+  return ellipsize(rendered.join("\n").trim(), 3800);
 }
 
 function formatProposalVotingEnd(proposal: ProposalRecord): string | null {
@@ -323,12 +328,12 @@ function getPrimaryLinkLabel(variant: ProposalMessageVariant): string {
   }
 }
 
-function getPrefaceLines(variant: ProposalMessageVariant, mention: string | null): Array<string | null> {
+function getPrefaceLines(variant: ProposalMessageVariant): Array<string | null> {
   switch (variant) {
     case "created":
       return ["> REVIEW PENDING"];
     case "voting":
-      return [mention, "> ACTION REQUIRED"];
+      return ["> ACTION REQUIRED"];
     case "executed":
       return ["> EXECUTION IN PROGRESS"];
     case "completed":
@@ -337,6 +342,23 @@ function getPrefaceLines(variant: ProposalMessageVariant, mention: string | null
       return ["> NO FURTHER ACTION"];
     case "latest":
       return ["> CURRENT SNAPSHOT"];
+  }
+}
+
+function getEmbedColor(variant: ProposalMessageVariant): number {
+  switch (variant) {
+    case "created":
+      return 0xf0b429;
+    case "voting":
+      return 0xed4245;
+    case "executed":
+      return 0x5865f2;
+    case "completed":
+      return 0x57f287;
+    case "cancelled":
+      return 0x747f8d;
+    case "latest":
+      return 0x3ba55d;
   }
 }
 
@@ -411,7 +433,7 @@ async function buildProposalMessage(params: {
   realmPubkey: string;
   fetchDescriptionFromLink: boolean;
   votingMention: string | null;
-}): Promise<{ content: string; allowedMentions: DiscordAllowedMentions }> {
+}): Promise<{ content: string; allowedMentions: DiscordAllowedMentions; embeds: DiscordEmbed[] }> {
   const summary = await getDescriptionSummary(params.proposal, params.fetchDescriptionFromLink);
   const draftedAt = formatDiscordTimestamp(params.proposal.draftAt);
   const votingAt = formatDiscordTimestamp(params.proposal.votingAt);
@@ -461,12 +483,18 @@ async function buildProposalMessage(params: {
   };
 
   return {
-    content: renderMessage({
-      title: getMessageTitle(params.variant),
-      prefaceLines: getPrefaceLines(params.variant, votingMention?.content ?? null),
-      sections: [leadSection, overviewSection, timelineSection, contextSection]
-    }),
-    allowedMentions: votingMention?.allowedMentions ?? { parse: [] }
+    content: votingMention?.content ?? "",
+    allowedMentions: votingMention?.allowedMentions ?? { parse: [] },
+    embeds: [
+      {
+        title: getMessageTitle(params.variant),
+        description: renderMessageBody({
+          prefaceLines: getPrefaceLines(params.variant),
+          sections: [leadSection, overviewSection, timelineSection, contextSection]
+        }),
+        color: getEmbedColor(params.variant)
+      }
+    ]
   };
 }
 
@@ -475,14 +503,23 @@ async function sendDiscordMessage(params: {
   channelId: string;
   content: string;
   allowedMentions?: DiscordAllowedMentions;
+  embeds?: DiscordEmbed[];
 }): Promise<void> {
   const endpoint = `https://discord.com/api/v10/channels/${encodeURIComponent(params.channelId)}/messages`;
-  const payload = JSON.stringify({
-    content: params.content,
+  const payloadBody: Record<string, unknown> = {
     allowed_mentions: params.allowedMentions ?? { parse: [] },
     // SUPPRESS_EMBEDS prevents Discord from unfurling link previews.
     flags: 4
-  });
+  };
+
+  if (params.content) {
+    payloadBody.content = params.content;
+  }
+  if (params.embeds?.length) {
+    payloadBody.embeds = params.embeds;
+  }
+
+  const payload = JSON.stringify(payloadBody);
   const headers = {
     "content-type": "application/json",
     authorization: `Bot ${params.token}`
@@ -619,7 +656,8 @@ export async function runCronOnce(config = getConfig()): Promise<RunStats> {
             token: config.discordToken,
             channelId: config.discordChannelId,
             content: content.content,
-            allowedMentions: content.allowedMentions
+            allowedMentions: content.allowedMentions,
+            embeds: content.embeds
           });
           testPostLatestPosted += 1;
           state.testPostLatestProposalDoneByTarget[targetKey] = true;
@@ -652,7 +690,8 @@ export async function runCronOnce(config = getConfig()): Promise<RunStats> {
             token: config.discordToken,
             channelId: config.discordChannelId,
             content: content.content,
-            allowedMentions: content.allowedMentions
+            allowedMentions: content.allowedMentions,
+            embeds: content.embeds
           });
           testPostLatestPosted = 1;
           state.testPostLatestProposalDone = true;
@@ -692,7 +731,8 @@ export async function runCronOnce(config = getConfig()): Promise<RunStats> {
             token: config.discordToken,
             channelId: config.discordChannelId,
             content: message.content,
-            allowedMentions: message.allowedMentions
+            allowedMentions: message.allowedMentions,
+            embeds: message.embeds
           });
           testPostLatestVotingPosted = 1;
           state.testPostLatestVotingProposalDone = true;
@@ -738,7 +778,8 @@ export async function runCronOnce(config = getConfig()): Promise<RunStats> {
               token: config.discordToken,
               channelId: config.discordChannelId,
               content: message.content,
-              allowedMentions: message.allowedMentions
+              allowedMentions: message.allowedMentions,
+              embeds: message.embeds
             });
             createdPosted += 1;
           } catch (error) {
@@ -775,7 +816,8 @@ export async function runCronOnce(config = getConfig()): Promise<RunStats> {
             token: config.discordToken,
             channelId: config.discordChannelId,
             content: message.content,
-            allowedMentions: message.allowedMentions
+            allowedMentions: message.allowedMentions,
+            embeds: message.embeds
           });
           known.announcedVoting = true;
           votingPosted += 1;
@@ -799,7 +841,8 @@ export async function runCronOnce(config = getConfig()): Promise<RunStats> {
             token: config.discordToken,
             channelId: config.discordChannelId,
             content: message.content,
-            allowedMentions: message.allowedMentions
+            allowedMentions: message.allowedMentions,
+            embeds: message.embeds
           });
           executedPosted += 1;
         } catch (error) {
@@ -822,7 +865,8 @@ export async function runCronOnce(config = getConfig()): Promise<RunStats> {
             token: config.discordToken,
             channelId: config.discordChannelId,
             content: message.content,
-            allowedMentions: message.allowedMentions
+            allowedMentions: message.allowedMentions,
+            embeds: message.embeds
           });
           completedPosted += 1;
         } catch (error) {
@@ -845,7 +889,8 @@ export async function runCronOnce(config = getConfig()): Promise<RunStats> {
             token: config.discordToken,
             channelId: config.discordChannelId,
             content: message.content,
-            allowedMentions: message.allowedMentions
+            allowedMentions: message.allowedMentions,
+            embeds: message.embeds
           });
           cancelledPosted += 1;
         } catch (error) {
