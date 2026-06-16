@@ -22,6 +22,11 @@ type ProposalMessageVariant =
   | "cancelled"
   | "latest";
 
+type MessageSection = {
+  heading?: string;
+  lines: Array<string | null>;
+};
+
 function toNum(value: unknown): number {
   const parsed = typeof value === "string" ? Number(value) : Number(value);
   return Number.isFinite(parsed) ? parsed : -1;
@@ -89,7 +94,7 @@ function formatLabelLine(line: string): string {
 function renderMessage(params: {
   title: string;
   prefaceLines?: Array<string | null>;
-  sections: Array<Array<string | null>>;
+  sections: MessageSection[];
 }): string {
   const rendered: string[] = [`**${params.title}**`];
   const prefaceLines = (params.prefaceLines ?? []).filter((line): line is string => Boolean(line));
@@ -99,9 +104,12 @@ function renderMessage(params: {
   }
 
   for (const section of params.sections) {
-    const lines = section.filter((line): line is string => Boolean(line));
+    const lines = section.lines.filter((line): line is string => Boolean(line));
     if (!lines.length) continue;
     rendered.push("");
+    if (section.heading) {
+      rendered.push(`__${section.heading}__`);
+    }
     for (const line of lines) {
       rendered.push(formatLabelLine(line));
     }
@@ -306,10 +314,93 @@ function getPrimaryLinkLabel(variant: ProposalMessageVariant): string {
     case "voting":
       return "Vote Link";
     case "executed":
+      return "Execution Link";
     case "completed":
     case "cancelled":
+      return "Record Link";
     case "latest":
       return "Proposal Link";
+  }
+}
+
+function getPrefaceLines(variant: ProposalMessageVariant, mention: string | null): Array<string | null> {
+  switch (variant) {
+    case "created":
+      return ["> REVIEW PENDING"];
+    case "voting":
+      return [mention, "> ACTION REQUIRED"];
+    case "executed":
+      return ["> EXECUTION IN PROGRESS"];
+    case "completed":
+      return ["> VOTING CLOSED"];
+    case "cancelled":
+      return ["> NO FURTHER ACTION"];
+    case "latest":
+      return ["> CURRENT SNAPSHOT"];
+  }
+}
+
+function getLeadHeading(variant: ProposalMessageVariant): string {
+  switch (variant) {
+    case "created":
+      return "NEXT STEP";
+    case "voting":
+      return "VOTE NOW";
+    case "executed":
+      return "EXECUTION";
+    case "completed":
+      return "CLOSED";
+    case "cancelled":
+      return "CANCELLED";
+    case "latest":
+      return "LATEST";
+  }
+}
+
+function getOverviewHeading(variant: ProposalMessageVariant): string {
+  switch (variant) {
+    case "completed":
+      return "FINAL STATE";
+    case "cancelled":
+      return "FINAL STATE";
+    default:
+      return "PROPOSAL";
+  }
+}
+
+function getTimelineHeading(variant: ProposalMessageVariant): string {
+  switch (variant) {
+    case "created":
+      return "DRAFT TIMELINE";
+    case "completed":
+    case "cancelled":
+      return "LIFECYCLE";
+    default:
+      return "TIMELINE";
+  }
+}
+
+function getContextHeading(variant: ProposalMessageVariant): string {
+  switch (variant) {
+    case "completed":
+      return "ARCHIVE";
+    case "cancelled":
+      return "REFERENCE";
+    default:
+      return "CONTEXT";
+  }
+}
+
+function shouldShowInstructions(variant: ProposalMessageVariant): boolean {
+  switch (variant) {
+    case "created":
+    case "voting":
+    case "executed":
+    case "latest":
+      return true;
+    case "completed":
+    case "cancelled":
+      return false;
   }
 }
 
@@ -332,34 +423,48 @@ async function buildProposalMessage(params: {
   const primaryLinkLabel = getPrimaryLinkLabel(params.variant);
   const summaryLimit = params.variant === "voting" ? 500 : 900;
 
-  const leadSection = [
-    action,
-    `${primaryLinkLabel}: ${proposalLink}`,
-    params.variant === "voting" && endsAt ? `Voting Ends: ${endsAt}` : null
-  ];
+  const leadSection: MessageSection = {
+    heading: getLeadHeading(params.variant),
+    lines: [
+      action,
+      `${primaryLinkLabel}: ${proposalLink}`,
+      params.variant === "voting" && endsAt ? `Voting Ends: ${endsAt}` : null
+    ]
+  };
 
-  const overviewSection = [
-    `DAO: ${params.daoLabel}`,
-    `Title: ${params.proposal.name}`,
-    formatProposalAuthor(params.proposal),
-    `Status: ${formatProposalStatus(params.proposal.state)}`,
-    instructions
-  ];
+  const overviewSection: MessageSection = {
+    heading: getOverviewHeading(params.variant),
+    lines: [
+      `DAO: ${params.daoLabel}`,
+      `Title: ${params.proposal.name}`,
+      formatProposalAuthor(params.proposal),
+      `Status: ${formatProposalStatus(params.proposal.state)}`,
+      shouldShowInstructions(params.variant) ? instructions : null
+    ]
+  };
 
-  const timelineSection = [
-    draftedAt ? `Drafted At: ${draftedAt}` : null,
-    votingAt ? `Voting Started: ${votingAt}` : null,
-    params.variant === "voting" || !endsAt ? null : `Voting Ends: ${endsAt}`
-  ];
+  const timelineSection: MessageSection = {
+    heading: getTimelineHeading(params.variant),
+    lines: [
+      draftedAt ? `Drafted At: ${draftedAt}` : null,
+      votingAt ? `Voting Started: ${votingAt}` : null,
+      params.variant === "voting" || !endsAt ? null : `Voting Ends: ${endsAt}`
+    ]
+  };
 
-  const summarySection = summary ? [`Summary: ${ellipsize(summary, summaryLimit)}`] : [];
-  const linksSection = [params.proposal.descriptionLink ? `Description Link: ${params.proposal.descriptionLink}` : null];
+  const contextSection: MessageSection = {
+    heading: getContextHeading(params.variant),
+    lines: [
+      summary ? `Summary: ${ellipsize(summary, summaryLimit)}` : null,
+      params.proposal.descriptionLink ? `Description Link: ${params.proposal.descriptionLink}` : null
+    ]
+  };
 
   return {
     content: renderMessage({
       title: getMessageTitle(params.variant),
-      prefaceLines: [votingMention?.content ?? null],
-      sections: [leadSection, overviewSection, timelineSection, summarySection, linksSection]
+      prefaceLines: getPrefaceLines(params.variant, votingMention?.content ?? null),
+      sections: [leadSection, overviewSection, timelineSection, contextSection]
     }),
     allowedMentions: votingMention?.allowedMentions ?? { parse: [] }
   };
