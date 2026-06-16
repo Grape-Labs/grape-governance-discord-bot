@@ -28,12 +28,13 @@ jobs:
         env:
           DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
           DISCORD_CHANNEL_ID: ${{ secrets.DISCORD_CHANNEL_ID }}
+          DISCORD_VOTING_MENTION: ${{ secrets.DISCORD_VOTING_MENTION }}
           DAO_TARGETS: ${{ secrets.DAO_TARGETS }}
           REALM_PUBKEY: ${{ secrets.REALM_PUBKEY }}
           GOV_PROGRAM_NAMESPACE: ${{ secrets.GOV_PROGRAM_NAMESPACE }}
           STATE_STORE: ${{ secrets.STATE_STORE }}
           UPSTASH_REDIS_REST_URL: ${{ secrets.UPSTASH_REDIS_REST_URL }}
-          UPSTASH_REDIS_REST_TOKEN: ${{ secrets.UPSTASH_REDIS_REST_TOKEN }}I dont
+          UPSTASH_REDIS_REST_TOKEN: ${{ secrets.UPSTASH_REDIS_REST_TOKEN }}
         run: |
           set -euo pipefail
           missing=0
@@ -77,6 +78,7 @@ jobs:
         env:
           DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
           DISCORD_CHANNEL_ID: ${{ secrets.DISCORD_CHANNEL_ID }}
+          DISCORD_VOTING_MENTION: ${{ secrets.DISCORD_VOTING_MENTION }}
           DAO_TARGETS: ${{ secrets.DAO_TARGETS }}
           REALM_PUBKEY: ${{ secrets.REALM_PUBKEY }}
           GOV_PROGRAM_NAMESPACE: ${{ secrets.GOV_PROGRAM_NAMESPACE }}
