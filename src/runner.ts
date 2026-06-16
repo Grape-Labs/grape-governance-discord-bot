@@ -507,9 +507,7 @@ async function sendDiscordMessage(params: {
 }): Promise<void> {
   const endpoint = `https://discord.com/api/v10/channels/${encodeURIComponent(params.channelId)}/messages`;
   const payloadBody: Record<string, unknown> = {
-    allowed_mentions: params.allowedMentions ?? { parse: [] },
-    // SUPPRESS_EMBEDS prevents Discord from unfurling link previews.
-    flags: 4
+    allowed_mentions: params.allowedMentions ?? { parse: [] }
   };
 
   if (params.content) {
