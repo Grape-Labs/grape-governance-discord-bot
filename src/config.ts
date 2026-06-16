@@ -22,6 +22,7 @@ function envInt(value: string | undefined, fallback: number): number {
 export type AppConfig = {
   discordToken: string;
   discordChannelId: string;
+  discordVotingMention: string | null;
   daoTargets: DaoTarget[];
   shyftGraphqlUrl: string;
   stateStore: "redis" | "file";
@@ -128,6 +129,7 @@ export function getConfig(): AppConfig {
   return {
     discordToken,
     discordChannelId,
+    discordVotingMention: process.env.DISCORD_VOTING_MENTION?.trim() || null,
     daoTargets: parseDaoTargets(process.env.DAO_TARGETS),
     shyftGraphqlUrl: process.env.SHYFT_GRAPHQL_URL?.trim() || DEFAULT_SHYFT_URL,
     stateStore,

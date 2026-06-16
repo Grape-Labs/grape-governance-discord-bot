@@ -3,6 +3,25 @@ import { fetchRealmProposals } from "./shyft.js";
 import { FileStateStore, RedisStateStore, type StateStore } from "./state-store.js";
 import type { ProposalRecord } from "./types.js";
 
+type DiscordAllowedMentions = {
+  parse: Array<"everyone">;
+  roles?: string[];
+  users?: string[];
+};
+
+type DiscordMention = {
+  content: string;
+  allowedMentions: DiscordAllowedMentions;
+};
+
+type ProposalMessageVariant =
+  | "created"
+  | "voting"
+  | "executed"
+  | "completed"
+  | "cancelled"
+  | "latest";
+
 function toNum(value: unknown): number {
   const parsed = typeof value === "string" ? Number(value) : Number(value);
   return Number.isFinite(parsed) ? parsed : -1;
@@ -67,35 +86,33 @@ function formatLabelLine(line: string): string {
   return `**${label}**: ${value}`;
 }
 
-function isLinkSectionLine(line: string): boolean {
-  return line.startsWith("Description: ") || line.startsWith("Proposal: ");
-}
+function renderMessage(params: {
+  title: string;
+  prefaceLines?: Array<string | null>;
+  sections: Array<Array<string | null>>;
+}): string {
+  const rendered: string[] = [`**${params.title}**`];
+  const prefaceLines = (params.prefaceLines ?? []).filter((line): line is string => Boolean(line));
 
-function renderMessage(title: string, lines: Array<string | null>): string {
-  const rawLines = lines.filter((line): line is string => Boolean(line));
-  const rendered: string[] = [`**${title}**`, ""];
+  if (prefaceLines.length) {
+    rendered.push("", ...prefaceLines);
+  }
 
-  let inLinkSection = false;
-  for (const line of rawLines) {
-    const linkSectionLine = isLinkSectionLine(line);
-    if (linkSectionLine && !inLinkSection) {
-      rendered.push("");
-      inLinkSection = true;
+  for (const section of params.sections) {
+    const lines = section.filter((line): line is string => Boolean(line));
+    if (!lines.length) continue;
+    rendered.push("");
+    for (const line of lines) {
+      rendered.push(formatLabelLine(line));
     }
-    rendered.push(formatLabelLine(line));
   }
 
-  while (rendered.length && rendered[rendered.length - 1] === "") {
-    rendered.pop();
-  }
-
-  return ellipsize(rendered.join("\n"), 1900);
+  return ellipsize(rendered.join("\n").trimEnd(), 1900);
 }
 
 function formatProposalVotingEnd(proposal: ProposalRecord): string | null {
   if (proposal.votingAt == null || proposal.maxVotingTime == null) return null;
-  const endsAt = formatDiscordTimestamp(proposal.votingAt + proposal.maxVotingTime);
-  return endsAt ? `Ends At: ${endsAt}` : null;
+  return formatDiscordTimestamp(proposal.votingAt + proposal.maxVotingTime);
 }
 
 function formatProposalInstructionCount(proposal: ProposalRecord): string | null {
@@ -211,180 +228,144 @@ async function fetchDescriptionText(url: string): Promise<string | null> {
   }
 }
 
-async function getDescription(proposal: ProposalRecord, shouldFetch: boolean): Promise<string> {
+async function getDescriptionSummary(proposal: ProposalRecord, shouldFetch: boolean): Promise<string | null> {
   const link = proposal.descriptionLink;
-  if (!link) return "No description provided.";
-  if (!shouldFetch) return link;
-
-  const description = await fetchDescriptionText(link);
-  if (!description) return link;
-  return description;
+  if (!link || !shouldFetch) return null;
+  return fetchDescriptionText(link);
 }
 
-async function buildCreatedMessage(params: {
+function buildVotingMention(raw: string | null | undefined): DiscordMention | null {
+  const value = raw?.trim();
+  if (!value) return null;
+  if (value === "@everyone" || value === "@here") {
+    return {
+      content: value,
+      allowedMentions: { parse: ["everyone"] }
+    };
+  }
+
+  const roleMatch = value.match(/^<@&(\d+)>$/);
+  if (roleMatch) {
+    return {
+      content: value,
+      allowedMentions: { parse: [], roles: [roleMatch[1]] }
+    };
+  }
+
+  const userMatch = value.match(/^<@!?(\d+)>$/);
+  if (userMatch) {
+    return {
+      content: value,
+      allowedMentions: { parse: [], users: [userMatch[1]] }
+    };
+  }
+
+  return {
+    content: value,
+    allowedMentions: { parse: [] }
+  };
+}
+
+function getMessageTitle(variant: ProposalMessageVariant): string {
+  switch (variant) {
+    case "created":
+      return "NEW PROPOSAL CREATED";
+    case "voting":
+      return "PROPOSAL NOW VOTING";
+    case "executed":
+      return "PROPOSAL EXECUTION STARTED";
+    case "completed":
+      return "PROPOSAL COMPLETED";
+    case "cancelled":
+      return "PROPOSAL CANCELLED";
+    case "latest":
+      return "SMOKE TEST: LATEST PROPOSAL";
+  }
+}
+
+function getMessageAction(variant: ProposalMessageVariant, proposal: ProposalRecord): string {
+  switch (variant) {
+    case "voting":
+      return "Action: DAO members, please vote now.";
+    case "executed":
+      return "Action: Proposal execution is now in progress.";
+    case "completed":
+      return "Action: Proposal lifecycle is complete.";
+    case "cancelled":
+      return "Action: Proposal is cancelled. No vote/action is needed.";
+    case "created":
+    case "latest":
+      return formatProposalAction(proposal.state);
+  }
+}
+
+async function buildProposalMessage(params: {
+  variant: ProposalMessageVariant;
   daoLabel: string;
   proposal: ProposalRecord;
   realmPubkey: string;
   fetchDescriptionFromLink: boolean;
-}): Promise<string> {
-  const description = await getDescription(params.proposal, params.fetchDescriptionFromLink);
+  votingMention: string | null;
+}): Promise<{ content: string; allowedMentions: DiscordAllowedMentions }> {
+  const summary = await getDescriptionSummary(params.proposal, params.fetchDescriptionFromLink);
   const draftedAt = formatDiscordTimestamp(params.proposal.draftAt);
   const votingAt = formatDiscordTimestamp(params.proposal.votingAt);
   const endsAt = formatProposalVotingEnd(params.proposal);
   const instructions = formatProposalInstructionCount(params.proposal);
-  return renderMessage("NEW PROPOSAL CREATED", [
-    `DAO: ${params.daoLabel}`,
-    `Title: ${params.proposal.name}`,
-    formatProposalAuthor(params.proposal),
-    `Status: ${formatProposalStatus(params.proposal.state)}`,
-    formatProposalAction(params.proposal.state),
-    draftedAt ? `Drafted At: ${draftedAt}` : null,
-    votingAt ? `Voting At: ${votingAt}` : null,
-    endsAt,
-    instructions,
-    `Description: ${ellipsize(description, 1200)}`,
-    `Proposal: ${proposalUrl(params.realmPubkey, params.proposal.pubkey)}`
-  ]);
-}
+  const proposalLink = proposalUrl(params.realmPubkey, params.proposal.pubkey);
+  const votingMention = params.variant === "voting" ? buildVotingMention(params.votingMention) : null;
+  const action = getMessageAction(params.variant, params.proposal);
+  const summaryLimit = params.variant === "voting" ? 500 : 900;
 
-async function buildVotingMessage(params: {
-  daoLabel: string;
-  proposal: ProposalRecord;
-  realmPubkey: string;
-  fetchDescriptionFromLink: boolean;
-}): Promise<string> {
-  const description = await getDescription(params.proposal, params.fetchDescriptionFromLink);
-  const draftedAt = formatDiscordTimestamp(params.proposal.draftAt);
-  const votingAt = formatDiscordTimestamp(params.proposal.votingAt);
-  const endsAt = formatProposalVotingEnd(params.proposal);
-  const instructions = formatProposalInstructionCount(params.proposal);
-  return renderMessage("PROPOSAL NOW VOTING", [
-    `DAO: ${params.daoLabel}`,
-    `Title: ${params.proposal.name}`,
-    formatProposalAuthor(params.proposal),
-    `Status: ${formatProposalStatus(params.proposal.state)}`,
-    formatProposalAction(params.proposal.state),
-    draftedAt ? `Drafted At: ${draftedAt}` : null,
-    votingAt ? `Voting At: ${votingAt}` : null,
-    endsAt,
-    instructions,
-    `Description: ${ellipsize(description, 1200)}`,
-    `Proposal: ${proposalUrl(params.realmPubkey, params.proposal.pubkey)}`
-  ]);
-}
+  const leadSection =
+    params.variant === "voting"
+      ? [
+          action,
+          `Vote Link: ${proposalLink}`,
+          endsAt ? `Voting Ends: ${endsAt}` : null
+        ]
+      : [action];
 
-async function buildExecutedMessage(params: {
-  daoLabel: string;
-  proposal: ProposalRecord;
-  realmPubkey: string;
-  fetchDescriptionFromLink: boolean;
-}): Promise<string> {
-  const description = await getDescription(params.proposal, params.fetchDescriptionFromLink);
-  const draftedAt = formatDiscordTimestamp(params.proposal.draftAt);
-  const votingAt = formatDiscordTimestamp(params.proposal.votingAt);
-  const endsAt = formatProposalVotingEnd(params.proposal);
-  const instructions = formatProposalInstructionCount(params.proposal);
-  return renderMessage("PROPOSAL EXECUTION STARTED", [
+  const overviewSection = [
     `DAO: ${params.daoLabel}`,
     `Title: ${params.proposal.name}`,
     formatProposalAuthor(params.proposal),
     `Status: ${formatProposalStatus(params.proposal.state)}`,
-    "Action: Proposal execution is now in progress.",
-    draftedAt ? `Drafted At: ${draftedAt}` : null,
-    votingAt ? `Voting At: ${votingAt}` : null,
-    endsAt,
-    instructions,
-    `Description: ${ellipsize(description, 1200)}`,
-    `Proposal: ${proposalUrl(params.realmPubkey, params.proposal.pubkey)}`
-  ]);
-}
+    instructions
+  ];
 
-async function buildCompletedMessage(params: {
-  daoLabel: string;
-  proposal: ProposalRecord;
-  realmPubkey: string;
-  fetchDescriptionFromLink: boolean;
-}): Promise<string> {
-  const description = await getDescription(params.proposal, params.fetchDescriptionFromLink);
-  const draftedAt = formatDiscordTimestamp(params.proposal.draftAt);
-  const votingAt = formatDiscordTimestamp(params.proposal.votingAt);
-  const endsAt = formatProposalVotingEnd(params.proposal);
-  const instructions = formatProposalInstructionCount(params.proposal);
-  return renderMessage("PROPOSAL COMPLETED", [
-    `DAO: ${params.daoLabel}`,
-    `Title: ${params.proposal.name}`,
-    formatProposalAuthor(params.proposal),
-    `Status: ${formatProposalStatus(params.proposal.state)}`,
-    "Action: Proposal lifecycle is complete.",
+  const timelineSection = [
     draftedAt ? `Drafted At: ${draftedAt}` : null,
-    votingAt ? `Voting At: ${votingAt}` : null,
-    endsAt,
-    instructions,
-    `Description: ${ellipsize(description, 1200)}`,
-    `Proposal: ${proposalUrl(params.realmPubkey, params.proposal.pubkey)}`
-  ]);
-}
+    votingAt ? `Voting Started: ${votingAt}` : null,
+    params.variant === "voting" || !endsAt ? null : `Voting Ends: ${endsAt}`
+  ];
 
-async function buildCancelledMessage(params: {
-  daoLabel: string;
-  proposal: ProposalRecord;
-  realmPubkey: string;
-  fetchDescriptionFromLink: boolean;
-}): Promise<string> {
-  const description = await getDescription(params.proposal, params.fetchDescriptionFromLink);
-  const draftedAt = formatDiscordTimestamp(params.proposal.draftAt);
-  const votingAt = formatDiscordTimestamp(params.proposal.votingAt);
-  const endsAt = formatProposalVotingEnd(params.proposal);
-  const instructions = formatProposalInstructionCount(params.proposal);
-  return renderMessage("PROPOSAL CANCELLED", [
-    `DAO: ${params.daoLabel}`,
-    `Title: ${params.proposal.name}`,
-    formatProposalAuthor(params.proposal),
-    `Status: ${formatProposalStatus(params.proposal.state)}`,
-    "Action: Proposal is cancelled. No vote/action is needed.",
-    draftedAt ? `Drafted At: ${draftedAt}` : null,
-    votingAt ? `Voting At: ${votingAt}` : null,
-    endsAt,
-    instructions,
-    `Description: ${ellipsize(description, 1200)}`,
-    `Proposal: ${proposalUrl(params.realmPubkey, params.proposal.pubkey)}`
-  ]);
-}
+  const summarySection = summary ? [`Summary: ${ellipsize(summary, summaryLimit)}`] : [];
+  const linksSection = [
+    params.variant === "voting" ? null : `Proposal Link: ${proposalLink}`,
+    params.proposal.descriptionLink ? `Description Link: ${params.proposal.descriptionLink}` : null
+  ];
 
-async function buildLatestProposalTestMessage(params: {
-  daoLabel: string;
-  proposal: ProposalRecord;
-  realmPubkey: string;
-  fetchDescriptionFromLink: boolean;
-}): Promise<string> {
-  const description = await getDescription(params.proposal, params.fetchDescriptionFromLink);
-  const draftedAt = formatDiscordTimestamp(params.proposal.draftAt);
-  const votingAt = formatDiscordTimestamp(params.proposal.votingAt);
-  const endsAt = formatProposalVotingEnd(params.proposal);
-  const instructions = formatProposalInstructionCount(params.proposal);
-  return renderMessage("SMOKE TEST: LATEST PROPOSAL", [
-    `DAO: ${params.daoLabel}`,
-    `Title: ${params.proposal.name}`,
-    formatProposalAuthor(params.proposal),
-    `Status: ${formatProposalStatus(params.proposal.state)}`,
-    formatProposalAction(params.proposal.state),
-    draftedAt ? `Drafted At: ${draftedAt}` : null,
-    votingAt ? `Voting At: ${votingAt}` : null,
-    endsAt,
-    instructions,
-    `Description: ${ellipsize(description, 1200)}`,
-    `Proposal: ${proposalUrl(params.realmPubkey, params.proposal.pubkey)}`
-  ]);
+  return {
+    content: renderMessage({
+      title: getMessageTitle(params.variant),
+      prefaceLines: [votingMention?.content ?? null],
+      sections: [leadSection, overviewSection, timelineSection, summarySection, linksSection]
+    }),
+    allowedMentions: votingMention?.allowedMentions ?? { parse: [] }
+  };
 }
 
 async function sendDiscordMessage(params: {
   token: string;
   channelId: string;
   content: string;
+  allowedMentions?: DiscordAllowedMentions;
 }): Promise<void> {
   const endpoint = `https://discord.com/api/v10/channels/${encodeURIComponent(params.channelId)}/messages`;
   const payload = JSON.stringify({
     content: params.content,
+    allowed_mentions: params.allowedMentions ?? { parse: [] },
     // SUPPRESS_EMBEDS prevents Discord from unfurling link previews.
     flags: 4
   });
@@ -512,16 +493,19 @@ export async function runCronOnce(config = getConfig()): Promise<RunStats> {
 
         const proposal = proposals[0];
         try {
-          const content = await buildLatestProposalTestMessage({
+          const content = await buildProposalMessage({
+            variant: "latest",
             daoLabel: target.label,
             proposal,
             realmPubkey: target.realmPubkey,
-            fetchDescriptionFromLink: config.fetchDescriptionFromLink
+            fetchDescriptionFromLink: config.fetchDescriptionFromLink,
+            votingMention: config.discordVotingMention
           });
           await sendDiscordMessage({
             token: config.discordToken,
             channelId: config.discordChannelId,
-            content
+            content: content.content,
+            allowedMentions: content.allowedMentions
           });
           testPostLatestPosted += 1;
           state.testPostLatestProposalDoneByTarget[targetKey] = true;
@@ -542,16 +526,19 @@ export async function runCronOnce(config = getConfig()): Promise<RunStats> {
 
       if (latest) {
         try {
-          const content = await buildLatestProposalTestMessage({
+          const content = await buildProposalMessage({
+            variant: "latest",
             daoLabel: latest.target.label,
             proposal: latest.proposal,
             realmPubkey: latest.target.realmPubkey,
-            fetchDescriptionFromLink: config.fetchDescriptionFromLink
+            fetchDescriptionFromLink: config.fetchDescriptionFromLink,
+            votingMention: config.discordVotingMention
           });
           await sendDiscordMessage({
             token: config.discordToken,
             channelId: config.discordChannelId,
-            content
+            content: content.content,
+            allowedMentions: content.allowedMentions
           });
           testPostLatestPosted = 1;
           state.testPostLatestProposalDone = true;
@@ -579,16 +566,19 @@ export async function runCronOnce(config = getConfig()): Promise<RunStats> {
 
       if (latestVoting) {
         try {
-          const content = await buildVotingMessage({
+          const message = await buildProposalMessage({
+            variant: "voting",
             daoLabel: latestVoting.target.label,
             proposal: latestVoting.proposal,
             realmPubkey: latestVoting.target.realmPubkey,
-            fetchDescriptionFromLink: config.fetchDescriptionFromLink
+            fetchDescriptionFromLink: config.fetchDescriptionFromLink,
+            votingMention: config.discordVotingMention
           });
           await sendDiscordMessage({
             token: config.discordToken,
             channelId: config.discordChannelId,
-            content
+            content: message.content,
+            allowedMentions: message.allowedMentions
           });
           testPostLatestVotingPosted = 1;
           state.testPostLatestVotingProposalDone = true;
@@ -621,17 +611,20 @@ export async function runCronOnce(config = getConfig()): Promise<RunStats> {
           ? config.announceExistingOnStart
           : targetWasSeeded;
         if (shouldAnnounceCreate) {
-          const message = await buildCreatedMessage({
+          const message = await buildProposalMessage({
+            variant: "created",
             daoLabel: target.label,
             proposal,
             realmPubkey: target.realmPubkey,
-            fetchDescriptionFromLink: config.fetchDescriptionFromLink
+            fetchDescriptionFromLink: config.fetchDescriptionFromLink,
+            votingMention: config.discordVotingMention
           });
           try {
             await sendDiscordMessage({
               token: config.discordToken,
               channelId: config.discordChannelId,
-              content: message
+              content: message.content,
+              allowedMentions: message.allowedMentions
             });
             createdPosted += 1;
           } catch (error) {
@@ -655,17 +648,20 @@ export async function runCronOnce(config = getConfig()): Promise<RunStats> {
       const wasCompleted = isCompletedState(known.lastState);
       const wasCancelled = isCancelledState(known.lastState);
       if (!wasVoting && nowVoting) {
-        const message = await buildVotingMessage({
+        const message = await buildProposalMessage({
+          variant: "voting",
           daoLabel: target.label,
           proposal,
           realmPubkey: target.realmPubkey,
-          fetchDescriptionFromLink: config.fetchDescriptionFromLink
+          fetchDescriptionFromLink: config.fetchDescriptionFromLink,
+          votingMention: config.discordVotingMention
         });
         try {
           await sendDiscordMessage({
             token: config.discordToken,
             channelId: config.discordChannelId,
-            content: message
+            content: message.content,
+            allowedMentions: message.allowedMentions
           });
           known.announcedVoting = true;
           votingPosted += 1;
@@ -676,17 +672,20 @@ export async function runCronOnce(config = getConfig()): Promise<RunStats> {
       }
 
       if (!wasExecuted && nowExecuted) {
-        const message = await buildExecutedMessage({
+        const message = await buildProposalMessage({
+          variant: "executed",
           daoLabel: target.label,
           proposal,
           realmPubkey: target.realmPubkey,
-          fetchDescriptionFromLink: config.fetchDescriptionFromLink
+          fetchDescriptionFromLink: config.fetchDescriptionFromLink,
+          votingMention: config.discordVotingMention
         });
         try {
           await sendDiscordMessage({
             token: config.discordToken,
             channelId: config.discordChannelId,
-            content: message
+            content: message.content,
+            allowedMentions: message.allowedMentions
           });
           executedPosted += 1;
         } catch (error) {
@@ -696,17 +695,20 @@ export async function runCronOnce(config = getConfig()): Promise<RunStats> {
       }
 
       if (!wasCompleted && nowCompleted) {
-        const message = await buildCompletedMessage({
+        const message = await buildProposalMessage({
+          variant: "completed",
           daoLabel: target.label,
           proposal,
           realmPubkey: target.realmPubkey,
-          fetchDescriptionFromLink: config.fetchDescriptionFromLink
+          fetchDescriptionFromLink: config.fetchDescriptionFromLink,
+          votingMention: config.discordVotingMention
         });
         try {
           await sendDiscordMessage({
             token: config.discordToken,
             channelId: config.discordChannelId,
-            content: message
+            content: message.content,
+            allowedMentions: message.allowedMentions
           });
           completedPosted += 1;
         } catch (error) {
@@ -716,17 +718,20 @@ export async function runCronOnce(config = getConfig()): Promise<RunStats> {
       }
 
       if (!wasCancelled && nowCancelled) {
-        const message = await buildCancelledMessage({
+        const message = await buildProposalMessage({
+          variant: "cancelled",
           daoLabel: target.label,
           proposal,
           realmPubkey: target.realmPubkey,
-          fetchDescriptionFromLink: config.fetchDescriptionFromLink
+          fetchDescriptionFromLink: config.fetchDescriptionFromLink,
+          votingMention: config.discordVotingMention
         });
         try {
           await sendDiscordMessage({
             token: config.discordToken,
             channelId: config.discordChannelId,
-            content: message
+            content: message.content,
+            allowedMentions: message.allowedMentions
           });
           cancelledPosted += 1;
         } catch (error) {

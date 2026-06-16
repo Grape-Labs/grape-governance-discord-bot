@@ -22,6 +22,9 @@ Supports one or many DAO realms in the same channel.
 - `DISCORD_BOT_TOKEN`
 - `DISCORD_CHANNEL_ID`
 
+Optional:
+- `DISCORD_VOTING_MENTION` to ping a role/user when a proposal enters Voting
+
 For persistent state via Upstash Redis:
 - `UPSTASH_REDIS_REST_URL`
 - `UPSTASH_REDIS_REST_TOKEN`
@@ -100,3 +103,5 @@ For this architecture, you only need:
 - `DISCORD_CHANNEL_ID`
 
 `DISCORD_APP_ID` and `DISCORD_PUBLIC_KEY` are not required unless you add slash commands/interactions.
+
+To ping `@Graperator` on voting posts, set `DISCORD_VOTING_MENTION` to the raw Discord mention token, for example `<@&ROLE_ID>` for a role or `<@USER_ID>` for a user. The bot only allows that configured mention, which prevents proposal titles/descriptions from accidentally pinging anyone else.
